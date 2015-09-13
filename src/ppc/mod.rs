@@ -63,5 +63,9 @@ impl Disassembler for PpcDis {
 
 		Err( DisError::Unknown{ num_bytes: 4 } )
 	}
+
+	fn op_num_bytes_hint(&self) -> u8 {
+		4
+	}
 }
 
