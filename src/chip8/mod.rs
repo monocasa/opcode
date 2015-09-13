@@ -55,12 +55,12 @@ fn addr_of(instr: u16) -> u16 {
 	instr & 0x0FFF
 }
 
-fn vx_of(instr: u16) -> u8 {
-	((instr & 0x0F00) >> 8) as u8
+fn vx_of(instr: u16) -> Reg {
+	Reg::V(((instr & 0x0F00) >> 8) as u8)
 }
 
-fn vy_of(instr: u16) -> u8 {
-	((instr & 0x00F0) >> 4) as u8
+fn vy_of(instr: u16) -> Reg {
+	Reg::V(((instr & 0x00F0) >> 4) as u8)
 }
 
 fn kk_of(instr: u16) -> u8 {
@@ -83,34 +83,34 @@ pub fn decode(instr: u16) -> DecodeResult {
 
 		0x2 => Op::Addr(Mne::Call, addr_of(instr)),
 
-		0x3 => Op::RegImmU8(Mne::Se, Reg::V(vx_of(instr)), kk_of(instr)),
+		0x3 => Op::RegImmU8(Mne::Se, vx_of(instr), kk_of(instr)),
 
-		0x4 => Op::RegImmU8(Mne::Sne, Reg::V(vx_of(instr)), kk_of(instr)),
+		0x4 => Op::RegImmU8(Mne::Sne, vx_of(instr), kk_of(instr)),
 
 		0x5 => match instr & 0x000F {
-			0x0 => Op::RegReg(Mne::Se, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
+			0x0 => Op::RegReg(Mne::Se, vx_of(instr), vy_of(instr)),
 			_   => return Err(DisError::Unknown{num_bytes: 2}),
 		},
 
-		0x6 => Op::RegImmU8(Mne::Ld, Reg::V(vx_of(instr)), kk_of(instr)),
+		0x6 => Op::RegImmU8(Mne::Ld, vx_of(instr), kk_of(instr)),
 
-		0x7 => Op::RegImmU8(Mne::Add, Reg::V(vx_of(instr)), kk_of(instr)),
+		0x7 => Op::RegImmU8(Mne::Add, vx_of(instr), kk_of(instr)),
 
 		0x8 => match instr & 0x000F {
-			0x0 => Op::RegReg(Mne::Ld,  Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0x1 => Op::RegReg(Mne::Or,  Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0x2 => Op::RegReg(Mne::And, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0x3 => Op::RegReg(Mne::Xor, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0x4 => Op::RegReg(Mne::Add, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0x5 => Op::RegReg(Mne::Sub, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0x6 => Op::RegSorta(Mne::Shr, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0x7 => Op::RegReg(Mne::Subn, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
-			0xE => Op::RegSorta(Mne::Shl, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
+			0x0 => Op::RegReg(  Mne::Ld,   vx_of(instr), vy_of(instr)),
+			0x1 => Op::RegReg(  Mne::Or,   vx_of(instr), vy_of(instr)),
+			0x2 => Op::RegReg(  Mne::And,  vx_of(instr), vy_of(instr)),
+			0x3 => Op::RegReg(  Mne::Xor,  vx_of(instr), vy_of(instr)),
+			0x4 => Op::RegReg(  Mne::Add,  vx_of(instr), vy_of(instr)),
+			0x5 => Op::RegReg(  Mne::Sub,  vx_of(instr), vy_of(instr)),
+			0x6 => Op::RegSorta(Mne::Shr,  vx_of(instr), vy_of(instr)),
+			0x7 => Op::RegReg(  Mne::Subn, vx_of(instr), vy_of(instr)),
+			0xE => Op::RegSorta(Mne::Shl,  vx_of(instr), vy_of(instr)),
 			_   => return Err(DisError::Unknown{num_bytes: 2}),
 		},
 
 		0x9 => match instr & 0x000F {
-			0x0 => Op::RegReg(Mne::Sne, Reg::V(vx_of(instr)), Reg::V(vy_of(instr))),
+			0x0 => Op::RegReg(Mne::Sne, vx_of(instr), vy_of(instr)),
 			_   => return Err(DisError::Unknown{num_bytes: 2}),
 		},
 
@@ -118,26 +118,26 @@ pub fn decode(instr: u16) -> DecodeResult {
 
 		0xB => Op::RegAddr(Mne::Jp, Reg::V(0), addr_of(instr)),
 
-		0xC => Op::RegImmU8(Mne::Rnd, Reg::V(vx_of(instr)), kk_of(instr)),
+		0xC => Op::RegImmU8(Mne::Rnd, vx_of(instr), kk_of(instr)),
 
-		0xD => Op::RegRegImmU4(Mne::Drw, Reg::V(vx_of(instr)), Reg::V(vy_of(instr)), k_of(instr)),
+		0xD => Op::RegRegImmU4(Mne::Drw, vx_of(instr), vy_of(instr), k_of(instr)),
 
 		0xE => match kk_of(instr) {
-			0x9E => Op::Reg(Mne::Skp,  Reg::V(vx_of(instr))),
-			0xA1 => Op::Reg(Mne::Sknp, Reg::V(vx_of(instr))),
+			0x9E => Op::Reg(Mne::Skp,  vx_of(instr)),
+			0xA1 => Op::Reg(Mne::Sknp, vx_of(instr)),
 			_    => return Err(DisError::Unknown{num_bytes: 2}),
 		},
 
 		0xF => match kk_of(instr) {
-			0x07 => Op::RegReg(Mne::Ld,  Reg::V(vx_of(instr)), Reg::Dt),
-			0x0A => Op::RegReg(Mne::Ld,  Reg::V(vx_of(instr)), Reg::K),
-			0x15 => Op::RegReg(Mne::Ld,  Reg::Dt,              Reg::V(vx_of(instr))),
-			0x18 => Op::RegReg(Mne::Ld,  Reg::St,              Reg::V(vx_of(instr))),
-			0x1E => Op::RegReg(Mne::Add, Reg::I,               Reg::V(vx_of(instr))),
-			0x29 => Op::RegReg(Mne::Ld,  Reg::F,               Reg::V(vx_of(instr))),
-			0x33 => Op::RegReg(Mne::Ld,  Reg::B,               Reg::V(vx_of(instr))),
-			0x55 => Op::IndirectReg(Mne::Ld, Reg::V(vx_of(instr))),
-			0x65 => Op::RegIndirect(Mne::Ld, Reg::V(vx_of(instr))),
+			0x07 => Op::RegReg(Mne::Ld,  vx_of(instr), Reg::Dt),
+			0x0A => Op::RegReg(Mne::Ld,  vx_of(instr), Reg::K),
+			0x15 => Op::RegReg(Mne::Ld,  Reg::Dt,      vx_of(instr)),
+			0x18 => Op::RegReg(Mne::Ld,  Reg::St,      vx_of(instr)),
+			0x1E => Op::RegReg(Mne::Add, Reg::I,       vx_of(instr)),
+			0x29 => Op::RegReg(Mne::Ld,  Reg::F,       vx_of(instr)),
+			0x33 => Op::RegReg(Mne::Ld,  Reg::B,       vx_of(instr)),
+			0x55 => Op::IndirectReg(Mne::Ld, vx_of(instr)),
+			0x65 => Op::RegIndirect(Mne::Ld, vx_of(instr)),
 			_    => return Err(DisError::Unknown{num_bytes: 2}),
 		},
 
