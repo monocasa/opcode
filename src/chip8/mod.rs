@@ -71,6 +71,74 @@ fn k_of(instr: u16) -> u8 {
 	(instr & 0x000F) as u8
 }
 
+fn reg_to_str(reg: Reg) -> String {
+	let ret = match reg {
+		Reg::V(num) => return format!("v{:x}", num),
+		Reg::I      => "i",
+		Reg::Dt     => "dt",
+		Reg::K      => "k",
+		Reg::St     => "st",
+		Reg::F      => "f",
+		Reg::B      => "b",
+	};
+
+	ret.to_string()
+}
+
+fn mne_to_str(mne: Mne) -> String {
+	let ret = match mne {
+		Mne::Add  => "add",
+		Mne::And  => "and",
+		Mne::Call => "call",
+		Mne::Cls  => "cls",
+		Mne::Drw  => "drw",
+		Mne::Jp   => "jp",
+		Mne::Ld   => "ld",
+		Mne::Or   => "or",
+		Mne::Ret  => "ret",
+		Mne::Rnd  => "rnd",
+		Mne::Se   => "se",
+		Mne::Shl  => "shl",
+		Mne::Shr  => "shr",
+		Mne::Sknp => "sknp",
+		Mne::Skp  => "skp",
+		Mne::Sne  => "sne",
+		Mne::Sub  => "sub",
+		Mne::Subn => "subn",
+		Mne::Sys  => "sys",
+		Mne::Xor  => "xor",
+	};
+
+	ret.to_string()
+}
+
+fn imm_to_str(imm: u8) -> String {
+	if imm <= 9 {
+		format!("{}", imm)
+	} else {
+		format!("{:#x}", imm)
+	}
+}
+
+fn addr_to_str(addr: u16) -> String {
+	format!("{:#05x}", addr)
+}
+
+pub fn op_to_str(op: Op) -> String {
+	match op {
+		Op::Implied(mne)                    => mne_to_str(mne),
+		Op::Addr(mne, addr)                 => format!("{:<4} {}", mne_to_str(mne), addr_to_str(addr)),
+		Op::RegImmU8(mne, dst, imm)         => format!("{:<4} {}, {}", mne_to_str(mne), reg_to_str(dst), imm_to_str(imm)),
+		Op::RegReg(mne, dst, src)           => format!("{:<4} {}, {}", mne_to_str(mne), reg_to_str(dst), reg_to_str(src)),
+		Op::RegSorta(mne, dst, ext)         => format!("{:<4} {} {{, {}}}", mne_to_str(mne), reg_to_str(dst), reg_to_str(ext)),
+		Op::RegAddr(mne, reg, addr)         => format!("{:<4} {}, {}", mne_to_str(mne), reg_to_str(reg), addr_to_str(addr)),
+		Op::RegRegImmU4(mne, dst, src, imm) => format!("{:<4} {}, {}, {}", mne_to_str(mne), reg_to_str(dst), reg_to_str(src), imm_to_str(imm)),
+		Op::Reg(mne, reg)                   => format!("{:<4} {}", mne_to_str(mne), reg_to_str(reg)),
+		Op::IndirectReg(mne, reg)           => format!("{:<4} [i], {}", mne_to_str(mne), reg_to_str(reg)),
+		Op::RegIndirect(mne, reg)           => format!("{:<4} {}, [i]", mne_to_str(mne), reg_to_str(reg)),
+	}
+}
+
 pub fn decode(instr: u16) -> DecodeResult {
 	let op = match instr >> 12 {
 		0x0 => match instr {
@@ -168,7 +236,7 @@ impl Disassembler for Chip8Disasm {
 
 		let op = try!(decode(instr));
 
-		Err(DisError::Unknown{num_bytes: 2})
+		Ok((op_to_str(op), 2))
 	}
 
 	fn op_num_bytes_hint(&self) -> u8 {
@@ -375,6 +443,182 @@ mod tests {
 	fn decode_xor() {
 		assert_eq!(decode(0x80F3).unwrap(), Op::RegReg(Mne::Xor, Reg::V(0x0), Reg::V(0xF)));
 		assert_eq!(decode(0x8F03).unwrap(), Op::RegReg(Mne::Xor, Reg::V(0xF), Reg::V(0x0)));
+	}
+
+	#[test]
+	fn disasm_add() {
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Add, Reg::V(0x0), 0xFF)), "add  v0, 0xff");
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Add, Reg::V(0xF), 0x00)), "add  vf, 0");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Add, Reg::V(0x0), Reg::V(0xF))), "add  v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Add, Reg::V(0xF), Reg::V(0x0))), "add  vf, v0");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Add, Reg::I, Reg::V(0x0))), "add  i, v0");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Add, Reg::I, Reg::V(0xF))), "add  i, vf");
+	}
+
+	#[test]
+	fn disasm_and() {
+		assert_eq!(op_to_str(Op::RegReg(Mne::And, Reg::V(0x0), Reg::V(0xF))), "and  v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::And, Reg::V(0xF), Reg::V(0x0))), "and  vf, v0");
+	}
+
+	#[test]
+	fn disasm_call() {
+		assert_eq!(op_to_str(Op::Addr(Mne::Call, 0x000)), "call 0x000");
+		assert_eq!(op_to_str(Op::Addr(Mne::Call, 0x423)), "call 0x423");
+		assert_eq!(op_to_str(Op::Addr(Mne::Call, 0x45C)), "call 0x45c");
+		assert_eq!(op_to_str(Op::Addr(Mne::Call, 0x5E0)), "call 0x5e0");
+		assert_eq!(op_to_str(Op::Addr(Mne::Call, 0x7DB)), "call 0x7db");
+		assert_eq!(op_to_str(Op::Addr(Mne::Call, 0x958)), "call 0x958");
+		assert_eq!(op_to_str(Op::Addr(Mne::Call, 0xFFF)), "call 0xfff");
+	}
+
+	#[test]
+	fn disasm_cls() {
+		assert_eq!(op_to_str(Op::Implied(Mne::Cls)), "cls");
+	}
+
+	#[test]
+	fn disasm_drw() {
+		assert_eq!(op_to_str(Op::RegRegImmU4(Mne::Drw, Reg::V(0x0), Reg::V(0x0), 0xF)), "drw  v0, v0, 0xf");
+		assert_eq!(op_to_str(Op::RegRegImmU4(Mne::Drw, Reg::V(0x0), Reg::V(0xF), 0x0)), "drw  v0, vf, 0");
+		assert_eq!(op_to_str(Op::RegRegImmU4(Mne::Drw, Reg::V(0xF), Reg::V(0x0), 0x0)), "drw  vf, v0, 0");
+	}
+
+	#[test]
+	fn disasm_jp() {
+		assert_eq!(op_to_str(Op::Addr(Mne::Jp, 0x000)), "jp   0x000");
+		assert_eq!(op_to_str(Op::Addr(Mne::Jp, 0xFFF)), "jp   0xfff");
+
+		assert_eq!(op_to_str(Op::RegAddr(Mne::Jp, Reg::V(0x0), 0x000)), "jp   v0, 0x000");
+		assert_eq!(op_to_str(Op::RegAddr(Mne::Jp, Reg::V(0x4), 0xD72)), "jp   v4, 0xd72");
+		assert_eq!(op_to_str(Op::RegAddr(Mne::Jp, Reg::V(0xF), 0xFFF)), "jp   vf, 0xfff");
+	}
+
+	#[test]
+	fn disasm_ld() {
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Ld, Reg::V(0x0), 0xFF)), "ld   v0, 0xff");
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Ld, Reg::V(0xF), 0x00)), "ld   vf, 0");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::V(0x0), Reg::V(0xF))), "ld   v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::V(0xF), Reg::V(0x0))), "ld   vf, v0");
+
+		assert_eq!(op_to_str(Op::RegAddr(Mne::Ld, Reg::I, 0x000)), "ld   i, 0x000");
+		assert_eq!(op_to_str(Op::RegAddr(Mne::Ld, Reg::I, 0x69E)), "ld   i, 0x69e");
+		assert_eq!(op_to_str(Op::RegAddr(Mne::Ld, Reg::I, 0xFFF)), "ld   i, 0xfff");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::V(0x0), Reg::Dt)), "ld   v0, dt");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::V(0xF), Reg::Dt)), "ld   vf, dt");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::V(0x0), Reg::K)), "ld   v0, k");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::V(0xF), Reg::K)), "ld   vf, k");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::Dt, Reg::V(0x0))), "ld   dt, v0");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::Dt, Reg::V(0xF))), "ld   dt, vf");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::St, Reg::V(0x0))), "ld   st, v0");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::St, Reg::V(0xF))), "ld   st, vf");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::F, Reg::V(0x0))), "ld   f, v0");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::F, Reg::V(0xF))), "ld   f, vf");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::B, Reg::V(0x0))), "ld   b, v0");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Ld, Reg::B, Reg::V(0xF))), "ld   b, vf");
+
+		assert_eq!(op_to_str(Op::IndirectReg(Mne::Ld, Reg::V(0x0))), "ld   [i], v0");
+		assert_eq!(op_to_str(Op::IndirectReg(Mne::Ld, Reg::V(0xF))), "ld   [i], vf");
+
+		assert_eq!(op_to_str(Op::RegIndirect(Mne::Ld, Reg::V(0x0))), "ld   v0, [i]");
+		assert_eq!(op_to_str(Op::RegIndirect(Mne::Ld, Reg::V(0xF))), "ld   vf, [i]");
+	}
+
+	#[test]
+	fn disasm_or() {
+		assert_eq!(op_to_str(Op::RegReg(Mne::Or, Reg::V(0x0), Reg::V(0xF))), "or   v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Or, Reg::V(0xF), Reg::V(0x0))), "or   vf, v0");
+	}
+
+	#[test]
+	fn disasm_ret() {
+		assert_eq!(op_to_str(Op::Implied(Mne::Ret)), "ret");
+	}
+
+	#[test]
+	fn disasm_rnd() {
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Rnd, Reg::V(0x0), 0xFF)), "rnd  v0, 0xff");
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Rnd, Reg::V(0xF), 0x00)), "rnd  vf, 0");
+	}
+
+	#[test]
+	fn disasm_se() {
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Se, Reg::V(0x0), 0x00)), "se   v0, 0");
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Se, Reg::V(0x5), 0x67)), "se   v5, 0x67");
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Se, Reg::V(0xF), 0xFF)), "se   vf, 0xff");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Se, Reg::V(0x0), Reg::V(0xF))), "se   v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Se, Reg::V(0xF), Reg::V(0x0))), "se   vf, v0");
+	}
+
+	#[test]
+	fn disasm_shl() {
+		assert_eq!(op_to_str(Op::RegSorta(Mne::Shl, Reg::V(0x0), Reg::V(0xF))), "shl  v0 {, vf}");
+		assert_eq!(op_to_str(Op::RegSorta(Mne::Shl, Reg::V(0xF), Reg::V(0x0))), "shl  vf {, v0}");
+	}
+
+	#[test]
+	fn disasm_shr() {
+		assert_eq!(op_to_str(Op::RegSorta(Mne::Shr, Reg::V(0x0), Reg::V(0xF))), "shr  v0 {, vf}");
+		assert_eq!(op_to_str(Op::RegSorta(Mne::Shr, Reg::V(0xF), Reg::V(0x0))), "shr  vf {, v0}");
+	}
+
+	#[test]
+	fn disasm_sknp() {
+		assert_eq!(op_to_str(Op::Reg(Mne::Sknp, Reg::V(0x0))), "sknp v0");
+		assert_eq!(op_to_str(Op::Reg(Mne::Sknp, Reg::V(0xF))), "sknp vf");
+	}
+
+	#[test]
+	fn disasm_skp() {
+		assert_eq!(op_to_str(Op::Reg(Mne::Skp, Reg::V(0x0))), "skp  v0");
+		assert_eq!(op_to_str(Op::Reg(Mne::Skp, Reg::V(0xF))), "skp  vf");
+	}
+
+	#[test]
+	fn disasm_sne() {
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Sne, Reg::V(0x0), 0x00)), "sne  v0, 0");
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Sne, Reg::V(0xA), 0x45)), "sne  va, 0x45");
+		assert_eq!(op_to_str(Op::RegImmU8(Mne::Sne, Reg::V(0xF), 0xFF)), "sne  vf, 0xff");
+
+		assert_eq!(op_to_str(Op::RegReg(Mne::Sne, Reg::V(0x0), Reg::V(0xF))), "sne  v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Sne, Reg::V(0xF), Reg::V(0x0))), "sne  vf, v0");
+	}
+
+	#[test]
+	fn disasm_sub() {
+		assert_eq!(op_to_str(Op::RegReg(Mne::Sub, Reg::V(0x0), Reg::V(0xF))), "sub  v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Sub, Reg::V(0xF), Reg::V(0x0))), "sub  vf, v0");
+	}
+
+	#[test]
+	fn disasm_subn() {
+		assert_eq!(op_to_str(Op::RegReg(Mne::Subn, Reg::V(0x0), Reg::V(0xF))), "subn v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Subn, Reg::V(0xF), Reg::V(0x0))), "subn vf, v0");
+	}
+
+	#[test]
+	fn disasm_sys() {
+		assert_eq!(op_to_str(Op::Addr(Mne::Sys, 0x00)), "sys  0x000");
+		assert_eq!(op_to_str(Op::Addr(Mne::Sys, 0x10)), "sys  0x010");
+		assert_eq!(op_to_str(Op::Addr(Mne::Sys, 0xDF)), "sys  0x0df");
+		assert_eq!(op_to_str(Op::Addr(Mne::Sys, 0xF0)), "sys  0x0f0");
+		assert_eq!(op_to_str(Op::Addr(Mne::Sys, 0xFF)), "sys  0x0ff");
+	}
+
+	#[test]
+	fn disasm_xor() {
+		assert_eq!(op_to_str(Op::RegReg(Mne::Xor, Reg::V(0x0), Reg::V(0xF))), "xor  v0, vf");
+		assert_eq!(op_to_str(Op::RegReg(Mne::Xor, Reg::V(0xF), Reg::V(0x0))), "xor  vf, v0");
 	}
 }
 

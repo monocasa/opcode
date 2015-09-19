@@ -18,7 +18,7 @@ pub enum DisError {
 	MemOverflow,
 }
 
-pub type DisResult = Result<(String, String, usize), DisError>;
+pub type DisResult = Result<(String, usize), DisError>;
 
 pub trait Disassembler {
 	fn disassemble(&self, Addr, &[u8]) -> DisResult;
