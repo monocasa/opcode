@@ -218,7 +218,6 @@ pub fn decode(instr: u16) -> DecodeResult {
 pub struct Chip8Disasm;
 
 impl Disassembler for Chip8Disasm {
-	#[allow(unused_variables)]
 	fn disassemble(&self, addr: Addr, buf: &[u8]) -> DisResult {
 		if addr & 1 != 0 {
 			return Err(DisError::Unaligned{desired_alignment: 2});
