@@ -28,6 +28,7 @@ pub enum Mne {
 	Addi,
 	Addis,
 	Lbz,
+	Lbzu,
 	Lbzx,
 }
 
@@ -84,7 +85,10 @@ fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> 
 pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match opcd(instr) {
 		31 => return decode_special(instr, addr, uarch),
-		34 => Op::RtDRa(Mne::Lbz, d_rt(instr), d_d(instr), d_ra(instr)),
+
+		34 => Op::RtDRa(Mne::Lbz,  d_rt(instr), d_d(instr), d_ra(instr)),
+		35 => Op::RtDRa(Mne::Lbzu, d_rt(instr), d_d(instr), d_ra(instr)),
+
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
 
@@ -135,6 +139,11 @@ mod tests {
 	fn decode_lbz() {
 		assert_eq!(decode_i(0x89230080), Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3)));
 		assert_eq!(decode_i(0x88EAB004), Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10)));
+	}
+
+	#[test]
+	fn decode_lbzu() {
+		assert_eq!(decode_i(0x8D23FFFF), Op::RtDRa(Mne::Lbzu, Reg::Gpr(9), -1, Reg::Gpr(3)));
 	}
 
 	#[test]
