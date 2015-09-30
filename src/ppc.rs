@@ -79,16 +79,20 @@ fn d_rtdra(mne: Mne, instr: u32) -> Op {
 	Op::RtDRa(mne, d_rt(instr), d_d(instr), d_ra(instr))
 }
 
+fn x_rtrarb(mne: Mne, instr: u32) -> Op {
+	Op::RtRaRb(mne, x_rt(instr), x_ra(instr), x_rb(instr))
+}
+
 #[allow(unused)]
 fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match x_xo(instr) {
-		87  => Op::RtRaRb(Mne::Lbzx,  x_rt(instr), x_ra(instr), x_rb(instr)),
+		87  => x_rtrarb(Mne::Lbzx,  instr),
 
-		119 => Op::RtRaRb(Mne::Lbzux, x_rt(instr), x_ra(instr), x_rb(instr)),
+		119 => x_rtrarb(Mne::Lbzux, instr),
 
-		279 => Op::RtRaRb(Mne::Lhzx,  x_rt(instr), x_ra(instr), x_rb(instr)),
+		279 => x_rtrarb(Mne::Lhzx,  instr),
 
-		311 => Op::RtRaRb(Mne::Lhzux, x_rt(instr), x_ra(instr), x_rb(instr)),
+		311 => x_rtrarb(Mne::Lhzux, instr),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
