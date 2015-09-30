@@ -71,6 +71,10 @@ fn x_xo(instr: u32) -> u16 {
 	((instr >> 1) & 0x3FF) as u16
 }
 
+fn d_rtdra(mne: Mne, instr: u32) -> Op {
+	Op::RtDRa(mne, d_rt(instr), d_d(instr), d_ra(instr))
+}
+
 #[allow(unused)]
 fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match x_xo(instr) {
@@ -89,8 +93,8 @@ pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match opcd(instr) {
 		31 => return decode_special(instr, addr, uarch),
 
-		34 => Op::RtDRa(Mne::Lbz,  d_rt(instr), d_d(instr), d_ra(instr)),
-		35 => Op::RtDRa(Mne::Lbzu, d_rt(instr), d_d(instr), d_ra(instr)),
+		34 => d_rtdra(Mne::Lbz,  instr),
+		35 => d_rtdra(Mne::Lbzu, instr),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
