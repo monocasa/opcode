@@ -31,6 +31,8 @@ pub enum Mne {
 	Lbzu,
 	Lbzux,
 	Lbzx,
+	Lhz,
+	Lhzu,
 }
 
 #[derive(Debug, PartialEq)]
@@ -95,6 +97,9 @@ pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 
 		34 => d_rtdra(Mne::Lbz,  instr),
 		35 => d_rtdra(Mne::Lbzu, instr),
+
+		40 => d_rtdra(Mne::Lhz,  instr),
+		41 => d_rtdra(Mne::Lhzu, instr),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
@@ -163,6 +168,17 @@ mod tests {
 	fn decode_lbzx() {
 		assert_eq!(decode_i(0x7C7F50AE), Op::RtRaRb(Mne::Lbzx, Reg::Gpr( 3), Reg::Gpr(31), Reg::Gpr(10)));
 		assert_eq!(decode_i(0x7D4340AE), Op::RtRaRb(Mne::Lbzx, Reg::Gpr(10), Reg::Gpr( 3), Reg::Gpr( 8)));
+	}
+
+	#[test]
+	fn decode_lhz() {
+		assert_eq!(decode_i(0xA09E0008), Op::RtDRa(Mne::Lhz, Reg::Gpr(4),      8, Reg::Gpr(30)));
+		assert_eq!(decode_i(0xA0E9B328), Op::RtDRa(Mne::Lhz, Reg::Gpr(7), -19672, Reg::Gpr( 9)));
+	}
+
+	#[test]
+	fn decode_lhzu() {
+		assert_eq!(decode_i(0xA4E80002), Op::RtDRa(Mne::Lhzu, Reg::Gpr(7), 2, Reg::Gpr(8)));
 	}
 }
 
