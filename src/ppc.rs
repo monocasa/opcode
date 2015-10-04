@@ -31,6 +31,10 @@ pub enum Mne {
 	Lbzu,
 	Lbzux,
 	Lbzx,
+	Lha,
+	Lhau,
+	Lhaux,
+	Lhax,
 	Lhz,
 	Lhzu,
 	Lhzux,
@@ -94,6 +98,10 @@ fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> 
 
 		311 => x_rtrarb(Mne::Lhzux, instr),
 
+		343 => x_rtrarb(Mne::Lhax,  instr),
+
+		375 => x_rtrarb(Mne::Lhaux, instr),
+
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
 
@@ -110,6 +118,8 @@ pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 
 		40 => d_rtdra(Mne::Lhz,  instr),
 		41 => d_rtdra(Mne::Lhzu, instr),
+		42 => d_rtdra(Mne::Lha,  instr),
+		43 => d_rtdra(Mne::Lhau, instr),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
@@ -178,6 +188,30 @@ mod tests {
 	fn decode_lbzx() {
 		assert_eq!(decode_i(0x7C7F50AE), Op::RtRaRb(Mne::Lbzx, Reg::Gpr( 3), Reg::Gpr(31), Reg::Gpr(10)));
 		assert_eq!(decode_i(0x7D4340AE), Op::RtRaRb(Mne::Lbzx, Reg::Gpr(10), Reg::Gpr( 3), Reg::Gpr( 8)));
+	}
+
+	#[test]
+	fn decode_lha() {
+		assert_eq!(decode_i(0xA8050000), Op::RtDRa(Mne::Lha, Reg::Gpr(0), 0, Reg::Gpr(5)));
+		assert_eq!(decode_i(0xA8E70002), Op::RtDRa(Mne::Lha, Reg::Gpr(7), 2, Reg::Gpr(7)));
+	}
+
+	#[test]
+	fn decode_lhau() {
+		assert_eq!(decode_i(0xACE80002), Op::RtDRa(Mne::Lhau, Reg::Gpr(7), 2, Reg::Gpr(8)));
+		assert_eq!(decode_i(0xACC40002), Op::RtDRa(Mne::Lhau, Reg::Gpr(6), 2, Reg::Gpr(4)));
+	}
+
+	#[test]
+	fn decode_lhaux() {
+		assert_eq!(decode_i(0x7C7F52EE), Op::RtRaRb(Mne::Lhaux, Reg::Gpr( 3), Reg::Gpr(31), Reg::Gpr(10)));
+		assert_eq!(decode_i(0x7D4342EE), Op::RtRaRb(Mne::Lhaux, Reg::Gpr(10), Reg::Gpr( 3), Reg::Gpr( 8)));
+	}
+
+	#[test]
+	fn decode_lhax() {
+		assert_eq!(decode_i(0x7CFB3AAE), Op::RtRaRb(Mne::Lhax, Reg::Gpr( 7), Reg::Gpr(27), Reg::Gpr(7)));
+		assert_eq!(decode_i(0x7DDE4AAE), Op::RtRaRb(Mne::Lhax, Reg::Gpr(14), Reg::Gpr(30), Reg::Gpr(9)));
 	}
 
 	#[test]
