@@ -90,6 +90,10 @@ fn d_rtdra(mne: Mne, instr: u32) -> Op {
 	Op::RtDRa(mne, d_rt(instr), d_d(instr), d_ra(instr))
 }
 
+fn d_rtdral(mne: Mne, instr: u32) -> Op {
+	Op::RtDRa(mne, d_rt(instr), d_d(instr), ra_or_literal_zero(d_ra(instr)))
+}
+
 fn x_rtrarb(mne: Mne, instr: u32) -> Op {
 	Op::RtRaRb(mne, x_rt(instr), x_ra(instr), x_rb(instr))
 }
@@ -124,12 +128,12 @@ pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match opcd(instr) {
 		31 => return decode_special(instr, addr, uarch),
 
-		34 => d_rtdra(Mne::Lbz,  instr),
+		34 => d_rtdral(Mne::Lbz, instr),
 		35 => d_rtdra(Mne::Lbzu, instr),
 
-		40 => d_rtdra(Mne::Lhz,  instr),
+		40 => d_rtdral(Mne::Lhz, instr),
 		41 => d_rtdra(Mne::Lhzu, instr),
-		42 => d_rtdra(Mne::Lha,  instr),
+		42 => d_rtdral(Mne::Lha, instr),
 		43 => d_rtdra(Mne::Lhau, instr),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
@@ -182,11 +186,15 @@ mod tests {
 	fn decode_lbz() {
 		assert_eq!(decode_i(0x89230080), Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3)));
 		assert_eq!(decode_i(0x88EAB004), Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10)));
+
+		assert_eq!(decode_i(0x88000000), Op::RtDRa(Mne::Lbz, Reg::Gpr(0), 0, Reg::LiteralZero));
 	}
 
 	#[test]
 	fn decode_lbzu() {
 		assert_eq!(decode_i(0x8D23FFFF), Op::RtDRa(Mne::Lbzu, Reg::Gpr(9), -1, Reg::Gpr(3)));
+
+		assert_eq!(decode_i(0x8C000000), Op::RtDRa(Mne::Lbzu, Reg::Gpr(0), 0, Reg::Gpr(0)));
 	}
 
 	#[test]
@@ -209,12 +217,17 @@ mod tests {
 	fn decode_lha() {
 		assert_eq!(decode_i(0xA8050000), Op::RtDRa(Mne::Lha, Reg::Gpr(0), 0, Reg::Gpr(5)));
 		assert_eq!(decode_i(0xA8E70002), Op::RtDRa(Mne::Lha, Reg::Gpr(7), 2, Reg::Gpr(7)));
+
+		assert_eq!(decode_i(0xA8000000), Op::RtDRa(Mne::Lha, Reg::Gpr(0), 0, Reg::LiteralZero));
 	}
 
 	#[test]
 	fn decode_lhau() {
 		assert_eq!(decode_i(0xACE80002), Op::RtDRa(Mne::Lhau, Reg::Gpr(7), 2, Reg::Gpr(8)));
 		assert_eq!(decode_i(0xACC40002), Op::RtDRa(Mne::Lhau, Reg::Gpr(6), 2, Reg::Gpr(4)));
+
+
+		assert_eq!(decode_i(0xAC000000), Op::RtDRa(Mne::Lhau, Reg::Gpr(0), 0, Reg::Gpr(0)));
 	}
 
 	#[test]
@@ -237,11 +250,15 @@ mod tests {
 	fn decode_lhz() {
 		assert_eq!(decode_i(0xA09E0008), Op::RtDRa(Mne::Lhz, Reg::Gpr(4),      8, Reg::Gpr(30)));
 		assert_eq!(decode_i(0xA0E9B328), Op::RtDRa(Mne::Lhz, Reg::Gpr(7), -19672, Reg::Gpr( 9)));
+
+		assert_eq!(decode_i(0xA0000000), Op::RtDRa(Mne::Lhz, Reg::Gpr(0), 0, Reg::LiteralZero));
 	}
 
 	#[test]
 	fn decode_lhzu() {
 		assert_eq!(decode_i(0xA4E80002), Op::RtDRa(Mne::Lhzu, Reg::Gpr(7), 2, Reg::Gpr(8)));
+
+		assert_eq!(decode_i(0xA4000000), Op::RtDRa(Mne::Lhzu, Reg::Gpr(0), 0, Reg::Gpr(0)));
 	}
 
 	#[test]
