@@ -67,15 +67,6 @@ fn x_ra(instr: u32) -> Reg {
 	Reg::Gpr(((instr >> 16) & 0x1F) as u8)
 }
 
-fn x_ral(instr: u32) -> Reg {
-	let reg = x_ra(instr);
-
-	match reg {
-		Reg::Gpr(0) => Reg::LiteralZero,
-		_           => reg,
-	}
-}
-
 fn x_rb(instr: u32) -> Reg {
 	Reg::Gpr(((instr >> 11) & 0x1F) as u8)
 }
@@ -88,6 +79,13 @@ fn x_xo(instr: u32) -> u16 {
 	((instr >> 1) & 0x3FF) as u16
 }
 
+fn ra_or_literal_zero(reg: Reg) -> Reg {
+	match reg {
+		Reg::Gpr(0) => Reg::LiteralZero,
+		_           => reg,
+	}
+}
+
 fn d_rtdra(mne: Mne, instr: u32) -> Op {
 	Op::RtDRa(mne, d_rt(instr), d_d(instr), d_ra(instr))
 }
@@ -97,7 +95,7 @@ fn x_rtrarb(mne: Mne, instr: u32) -> Op {
 }
 
 fn x_rtralrb(mne: Mne, instr: u32) -> Op {
-	Op::RtRaRb(mne, x_rt(instr), x_ral(instr), x_rb(instr))
+	Op::RtRaRb(mne, x_rt(instr), ra_or_literal_zero(x_ra(instr)), x_rb(instr))
 }
 
 #[allow(unused)]
