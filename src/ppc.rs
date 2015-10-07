@@ -39,6 +39,10 @@ pub enum Mne {
 	Lhzu,
 	Lhzux,
 	Lhzx,
+	Lwz,
+	Lwzu,
+	Lwzux,
+	Lwzx,
 }
 
 #[derive(Debug, PartialEq)]
@@ -105,6 +109,10 @@ fn x_rtralrb(mne: Mne, instr: u32) -> Op {
 #[allow(unused)]
 fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match x_xo(instr) {
+		23  => x_rtralrb(Mne::Lwzx,  instr),
+
+		55  => x_rtrarb( Mne::Lwzux, instr),
+
 		87  => x_rtralrb(Mne::Lbzx,  instr),
 
 		119 => x_rtrarb( Mne::Lbzux, instr),
@@ -128,6 +136,8 @@ pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match opcd(instr) {
 		31 => return decode_special(instr, addr, uarch),
 
+		32 => d_rtdral(Mne::Lwz, instr),
+		33 => d_rtdra(Mne::Lwzu, instr),
 		34 => d_rtdral(Mne::Lbz, instr),
 		35 => d_rtdra(Mne::Lbzu, instr),
 
@@ -274,6 +284,37 @@ mod tests {
 		assert_eq!(decode_i(0x7CC64A2E), Op::RtRaRb(Mne::Lhzx, Reg::Gpr( 6), Reg::Gpr(6), Reg::Gpr(9)));
 
 		assert_eq!(decode_i(0x7C00022E), Op::RtRaRb(Mne::Lhzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)));
+	}
+
+	#[test]
+	fn decode_lwz() {
+		assert_eq!(decode_i(0x812985B0), Op::RtDRa(Mne::Lwz, Reg::Gpr(9), -31312, Reg::Gpr(9)));
+		assert_eq!(decode_i(0x80890008), Op::RtDRa(Mne::Lwz, Reg::Gpr(4),      8, Reg::Gpr(9)));
+
+		assert_eq!(decode_i(0x80000000), Op::RtDRa(Mne::Lwz, Reg::Gpr(0), 0, Reg::LiteralZero));
+	}
+
+	#[test]
+	fn decode_lwzu() {
+		assert_eq!(decode_i(0x847F0004), Op::RtDRa(Mne::Lwzu, Reg::Gpr(3), 4, Reg::Gpr(31)));
+		assert_eq!(decode_i(0x85060004), Op::RtDRa(Mne::Lwzu, Reg::Gpr(8), 4, Reg::Gpr( 6)));
+
+		assert_eq!(decode_i(0x84000000), Op::RtDRa(Mne::Lwzu, Reg::Gpr(0), 0, Reg::Gpr(0)));
+	}
+
+	#[test]
+	fn decode_lwzux() {
+		assert_eq!(decode_i(0x7D3F486E), Op::RtRaRb(Mne::Lwzux, Reg::Gpr(9), Reg::Gpr(31), Reg::Gpr(9)));
+
+		assert_eq!(decode_i(0x7C00006E), Op::RtRaRb(Mne::Lwzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)));
+	}
+
+	#[test]
+	fn decode_lwzx() {
+		assert_eq!(decode_i(0x7F8A482E), Op::RtRaRb(Mne::Lwzx, Reg::Gpr(28), Reg::Gpr(10), Reg::Gpr( 9)));
+		assert_eq!(decode_i(0x7D09502E), Op::RtRaRb(Mne::Lwzx, Reg::Gpr( 8), Reg::Gpr( 9), Reg::Gpr(10)));
+
+		assert_eq!(decode_i(0x7C00002E), Op::RtRaRb(Mne::Lwzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)));
 	}
 }
 
