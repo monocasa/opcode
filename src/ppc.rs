@@ -152,20 +152,9 @@ pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	Ok(op)
 }
 
-pub struct PpcDis {
-	#[allow(dead_code)]
-	uarch: Uarch,
-}
+pub struct PpcDisasm;
 
-impl PpcDis {
-	pub fn new() -> PpcDis {
-		PpcDis {
-			uarch: Uarch::Ppc206B,
-		}
-	}
-}
-
-impl Disassembler for PpcDis {
+impl Disassembler for PpcDisasm {
 	#[allow(unused_variables)]
 	fn disassemble(&self, addr: Addr, buf: &[u8]) -> DisResult  {
 		if buf.len() < 4 {
