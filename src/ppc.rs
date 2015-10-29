@@ -171,10 +171,6 @@ impl Disassembler for PpcDisasm {
 	fn bytes_per_unit(&self) -> u16 {
 		1
 	}
-
-	fn typical_num_units(&self) -> u16 {
-		4
-	}
 }
 
 #[cfg(test)]

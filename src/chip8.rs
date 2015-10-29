@@ -241,10 +241,6 @@ impl Disassembler for Chip8Disasm {
 	fn bytes_per_unit(&self) -> u16 {
 		2
 	}
-
-	fn typical_num_units(&self) -> u16 {
-		1
-	}
 }
 
 #[cfg(test)]
