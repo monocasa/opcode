@@ -22,6 +22,8 @@ pub type DisResult = Result<(String, usize), DisError>;
 
 pub trait Disassembler {
 	fn disassemble(&self, Addr, &[u8]) -> DisResult;
-	fn op_num_bytes_hint(&self) -> u8;
+
+	fn bytes_per_unit() -> u16;
+	fn typical_num_units() -> u16;
 }
 
