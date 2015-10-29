@@ -23,7 +23,7 @@ pub type DisResult = Result<(String, usize), DisError>;
 pub trait Disassembler {
 	fn disassemble(&self, Addr, &[u8]) -> DisResult;
 
-	fn bytes_per_unit() -> u16;
-	fn typical_num_units() -> u16;
+	fn bytes_per_unit(&self) -> u16;
+	fn typical_num_units(&self) -> u16;
 }
 

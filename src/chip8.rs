@@ -238,11 +238,11 @@ impl Disassembler for Chip8Disasm {
 		Ok((op_to_str(op), 2))
 	}
 
-	fn bytes_per_unit() -> u16 {
+	fn bytes_per_unit(&self) -> u16 {
 		2
 	}
 
-	fn typical_num_units() -> u16 {
+	fn typical_num_units(&self) -> u16 {
 		1
 	}
 }

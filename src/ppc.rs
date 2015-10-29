@@ -168,11 +168,11 @@ impl Disassembler for PpcDisasm {
 		Err( DisError::Unknown{ num_bytes: 4 } )
 	}
 
-	fn bytes_per_unit() -> u16 {
+	fn bytes_per_unit(&self) -> u16 {
 		1
 	}
 
-	fn typical_num_units() -> u16 {
+	fn typical_num_units(&self) -> u16 {
 		4
 	}
 }
