@@ -51,6 +51,52 @@ pub enum Op {
 	RtRaRb(Mne, Reg, Reg, Reg),
 }
 
+fn mne_to_str(mne: &Mne) -> String {
+	match mne {
+		&Mne::Addi   => "addi",
+		&Mne::Addis  => "addis",
+		&Mne::Lbz    => "lbz",
+		&Mne::Lbzu   => "lbzu",
+		&Mne::Lbzux  => "lbzux",
+		&Mne::Lbzx   => "lbzx",
+		&Mne::Lha    => "lha",
+		&Mne::Lhau   => "lhau",
+		&Mne::Lhaux  => "lhaux",
+		&Mne::Lhax   => "lhax",
+		&Mne::Lhz    => "lhz",
+		&Mne::Lhzu   => "lhzu",
+		&Mne::Lhzux  => "lhzux",
+		&Mne::Lhzx   => "lhzx",
+		&Mne::Lwz    => "lwz",
+		&Mne::Lwzu   => "lwzu",
+		&Mne::Lwzux  => "lwzux",
+		&Mne::Lwzx   => "lwzx",
+	}.to_string()
+}
+
+fn reg_to_str(reg: &Reg) -> String {
+	match reg {
+ 		&Reg::Gpr(gpr)    => format!("r{}", gpr),
+		&Reg::LiteralZero => format!("0"),
+		_             => format!("wat"),
+	}
+}
+
+pub fn op_to_str(op: &Op) -> String {
+	match op {
+		&Op::RtDRa(ref mne, ref rt, ref d, ref ra)   => format!("{:<7} {},{}({})",
+		                                                        mne_to_str(&mne),
+		                                                        reg_to_str(&rt), 
+		                                                        d, 
+		                                                        reg_to_str(&ra)),
+		&Op::RtRaRb(ref mne, ref rt, ref ra, ref rb) => format!("{:<7} {},{},{}",
+		                                                        mne_to_str(&mne),
+		                                                        reg_to_str(&rt),
+		                                                        reg_to_str(&ra),
+		                                                        reg_to_str(&rb)),
+	}
+}
+
 fn opcd(instr: u32) -> u16 {
 	((instr >> 26) & 0x3F) as u16
 }
@@ -165,7 +211,14 @@ impl Disassembler for PpcDisasm {
 			return Err( DisError::Unaligned{ desired_alignment: 4, } );
 		}
 
-		Err( DisError::Unknown{ num_bytes: 4 } )
+		let instr = ((buf[0] as u32) << 24) |
+		            ((buf[1] as u32) << 16) |
+		            ((buf[2] as u32) << 8 ) |
+		            ((buf[3] as u32) << 0 );
+
+		let op = try!(decode(instr, addr, Uarch::Ppc206B));
+
+		Ok((op_to_str(&op), 4))
 	}
 
 	fn bytes_per_unit(&self) -> u16 {
@@ -187,6 +240,14 @@ mod tests {
 		assert_eq!(decode_i(0x88EAB004), Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10)));
 
 		assert_eq!(decode_i(0x88000000), Op::RtDRa(Mne::Lbz, Reg::Gpr(0), 0, Reg::LiteralZero));
+	}
+
+	#[test]
+	fn disasm_lbz() {
+		assert_eq!(op_to_str(&Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3))), "lbz     r9,128(r3)");
+		assert_eq!(op_to_str(&Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10))), "lbz     r7,-20476(r10)");
+
+		assert_eq!(op_to_str(&Op::RtDRa(Mne::Lbz, Reg::Gpr(0), 0, Reg::LiteralZero)), "lbz     r0,0(0)");
 	}
 
 	#[test]
