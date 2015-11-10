@@ -44,6 +44,7 @@ pub enum Mne {
 	Lwzu,
 	Lwzux,
 	Lwzx,
+	Mtspr,
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,6 +52,7 @@ pub enum Op {
 	Implied(Mne),
 	RtDRa(Mne, Reg, i16, Reg),
 	RtRaRb(Mne, Reg, Reg, Reg),
+	SprRs(Mne, Reg, Reg),
 }
 
 fn mne_to_str(mne: &Mne) -> String {
@@ -74,6 +76,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Lwzu   => "lwzu",
 		&Mne::Lwzux  => "lwzux",
 		&Mne::Lwzx   => "lwzx",
+		&Mne::Mtspr  => "mtspr",
 	}.to_string()
 }
 
@@ -81,23 +84,31 @@ fn reg_to_str(reg: &Reg) -> String {
 	match reg {
  		&Reg::Gpr(gpr)    => format!("r{}", gpr),
 		&Reg::LiteralZero => format!("0"),
+		&Reg::Spr(spr)    => format!("{}", spr),
 		_             => format!("wat"),
 	}
 }
 
 pub fn op_to_str(op: &Op) -> String {
 	match op {
+		&Op::Implied(ref mne)                        => format!("{}", mne_to_str(&mne)),
+
 		&Op::RtDRa(ref mne, ref rt, ref d, ref ra)   => format!("{:<7} {},{}({})",
 		                                                        mne_to_str(&mne),
 		                                                        reg_to_str(&rt), 
 		                                                        d, 
 		                                                        reg_to_str(&ra)),
+
 		&Op::RtRaRb(ref mne, ref rt, ref ra, ref rb) => format!("{:<7} {},{},{}",
 		                                                        mne_to_str(&mne),
 		                                                        reg_to_str(&rt),
 		                                                        reg_to_str(&ra),
 		                                                        reg_to_str(&rb)),
-		&Op::Implied(ref mne)                        => format!("{}", mne_to_str(&mne)),
+
+		&Op::SprRs(ref mne, ref spr, ref rs) => format!("{:<7} {},{}",
+		                                                mne_to_str(&mne),
+		                                                reg_to_str(&spr),
+		                                                reg_to_str(&rs)),
 	}
 }
 
@@ -129,8 +140,16 @@ fn x_rt(instr: u32) -> Reg {
 	Reg::Gpr(((instr >> 21) & 0x1F) as u8)
 }
 
+fn x_rs(instr: u32) -> Reg {
+	Reg::Gpr(((instr >> 21) & 0x1F) as u8)
+}
+
 fn x_xo(instr: u32) -> u16 {
 	((instr >> 1) & 0x3FF) as u16
+}
+
+fn xfx_spr(instr: u32) -> Reg {
+	Reg::Spr( (((instr >> 6) & 0x3E0) | ((instr >> 16) & 0x1F)) as u16)
 }
 
 fn ra_or_literal_zero(reg: Reg) -> Reg {
@@ -154,6 +173,10 @@ fn x_rtrarb(mne: Mne, instr: u32) -> Op {
 
 fn x_rtralrb(mne: Mne, instr: u32) -> Op {
 	Op::RtRaRb(mne, x_rt(instr), ra_or_literal_zero(x_ra(instr)), x_rb(instr))
+}
+
+fn xfx_sprrs(mne: Mne, instr: u32) -> Op {
+	Op::SprRs(mne, xfx_spr(instr), x_rs(instr))
 }
 
 #[allow(unused)]
@@ -185,6 +208,8 @@ fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> 
 		343 => x_rtralrb(Mne::Lhax,  instr),
 
 		375 => x_rtrarb( Mne::Lhaux, instr),
+
+		467 => xfx_sprrs(Mne::Mtspr, instr),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
@@ -253,7 +278,7 @@ mod tests {
 		Normal{ instr: u32, asm: &'static str, op: Op },
 	}
 
-	static TEST_CASES: [TestCase; 45] = [
+	static TEST_CASES: [TestCase; 47] = [
 		TestCase::Normal{ instr: 0x4C00012C, asm: "isync",                  op: Op::Implied(Mne::Isync) },
 
 		TestCase::Normal{ instr: 0x89230080, asm: "lbz     r9,128(r3)",     op: Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3)) },
@@ -301,20 +326,23 @@ mod tests {
 		TestCase::Normal{ instr: 0x7CC64A2E, asm: "lhzx    r6,r6,r9",       op: Op::RtRaRb(Mne::Lhzx, Reg::Gpr( 6), Reg::Gpr(6), Reg::Gpr(9)) },
 		TestCase::Normal{ instr: 0x7C00022E, asm: "lhzx    r0,0,r0",        op: Op::RtRaRb(Mne::Lhzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
 
-		TestCase::Normal{ instr: 0x812985B0, asm: "lwz     r9,-31312(r9)", op: Op::RtDRa(Mne::Lwz, Reg::Gpr(9), -31312, Reg::Gpr(9)) },
-		TestCase::Normal{ instr: 0x80890008, asm: "lwz     r4,8(r9)",      op: Op::RtDRa(Mne::Lwz, Reg::Gpr(4),      8, Reg::Gpr(9)) },
-		TestCase::Normal{ instr: 0x80000000, asm: "lwz     r0,0(0)",       op: Op::RtDRa(Mne::Lwz, Reg::Gpr(0), 0, Reg::LiteralZero) },
+		TestCase::Normal{ instr: 0x812985B0, asm: "lwz     r9,-31312(r9)",  op: Op::RtDRa(Mne::Lwz, Reg::Gpr(9), -31312, Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x80890008, asm: "lwz     r4,8(r9)",       op: Op::RtDRa(Mne::Lwz, Reg::Gpr(4),      8, Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x80000000, asm: "lwz     r0,0(0)",        op: Op::RtDRa(Mne::Lwz, Reg::Gpr(0), 0, Reg::LiteralZero) },
 
-		TestCase::Normal{ instr: 0x847F0004, asm: "lwzu    r3,4(r31)",     op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(3), 4, Reg::Gpr(31)) },
-		TestCase::Normal{ instr: 0x85060004, asm: "lwzu    r8,4(r6)",      op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(8), 4, Reg::Gpr( 6)) },
-		TestCase::Normal{ instr: 0x84000000, asm: "lwzu    r0,0(r0)",      op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(0), 0, Reg::Gpr(0)) },
+		TestCase::Normal{ instr: 0x847F0004, asm: "lwzu    r3,4(r31)",      op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(3), 4, Reg::Gpr(31)) },
+		TestCase::Normal{ instr: 0x85060004, asm: "lwzu    r8,4(r6)",       op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(8), 4, Reg::Gpr( 6)) },
+		TestCase::Normal{ instr: 0x84000000, asm: "lwzu    r0,0(r0)",       op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(0), 0, Reg::Gpr(0)) },
 
-		TestCase::Normal{ instr: 0x7D3F486E, asm: "lwzux   r9,r31,r9",     op: Op::RtRaRb(Mne::Lwzux, Reg::Gpr(9), Reg::Gpr(31), Reg::Gpr(9)) },
-		TestCase::Normal{ instr: 0x7C00006E, asm: "lwzux   r0,r0,r0",      op: Op::RtRaRb(Mne::Lwzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)) },
+		TestCase::Normal{ instr: 0x7D3F486E, asm: "lwzux   r9,r31,r9",      op: Op::RtRaRb(Mne::Lwzux, Reg::Gpr(9), Reg::Gpr(31), Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x7C00006E, asm: "lwzux   r0,r0,r0",       op: Op::RtRaRb(Mne::Lwzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)) },
 
-		TestCase::Normal{ instr: 0x7F8A482E, asm: "lwzx    r28,r10,r9",    op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(28), Reg::Gpr(10), Reg::Gpr( 9)) },
-		TestCase::Normal{ instr: 0x7D09502E, asm: "lwzx    r8,r9,r10",     op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr( 8), Reg::Gpr( 9), Reg::Gpr(10)) },
-		TestCase::Normal{ instr: 0x7C00002E, asm: "lwzx    r0,0,r0",       op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
+		TestCase::Normal{ instr: 0x7F8A482E, asm: "lwzx    r28,r10,r9",     op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(28), Reg::Gpr(10), Reg::Gpr( 9)) },
+		TestCase::Normal{ instr: 0x7D09502E, asm: "lwzx    r8,r9,r10",      op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr( 8), Reg::Gpr( 9), Reg::Gpr(10)) },
+		TestCase::Normal{ instr: 0x7C00002E, asm: "lwzx    r0,0,r0",        op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7C7E4BA6, asm: "mtspr   318,r3",         op: Op::SprRs(Mne::Mtspr, Reg::Spr(318), Reg::Gpr(3)) },
+		TestCase::Normal{ instr: 0x7D51FBA6, asm: "mtspr   1009,r10",       op: Op::SprRs(Mne::Mtspr, Reg::Spr(1009), Reg::Gpr(10)) },
 	];
 
 	#[test]
