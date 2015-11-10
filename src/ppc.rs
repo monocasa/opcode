@@ -27,6 +27,7 @@ pub enum Reg {
 pub enum Mne {
 	Addi,
 	Addis,
+	Isync,
 	Lbz,
 	Lbzu,
 	Lbzux,
@@ -47,6 +48,7 @@ pub enum Mne {
 
 #[derive(Debug, PartialEq)]
 pub enum Op {
+	Implied(Mne),
 	RtDRa(Mne, Reg, i16, Reg),
 	RtRaRb(Mne, Reg, Reg, Reg),
 }
@@ -55,6 +57,7 @@ fn mne_to_str(mne: &Mne) -> String {
 	match mne {
 		&Mne::Addi   => "addi",
 		&Mne::Addis  => "addis",
+		&Mne::Isync  => "isync",
 		&Mne::Lbz    => "lbz",
 		&Mne::Lbzu   => "lbzu",
 		&Mne::Lbzux  => "lbzux",
@@ -94,6 +97,7 @@ pub fn op_to_str(op: &Op) -> String {
 		                                                        reg_to_str(&rt),
 		                                                        reg_to_str(&ra),
 		                                                        reg_to_str(&rb)),
+		&Op::Implied(ref mne)                        => format!("{}", mne_to_str(&mne)),
 	}
 }
 
@@ -153,6 +157,17 @@ fn x_rtralrb(mne: Mne, instr: u32) -> Op {
 }
 
 #[allow(unused)]
+fn decode_op_19(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
+	let op = match x_xo(instr) {
+		150 => Op::Implied(Mne::Isync),
+
+		_ => return Err(DisError::Unknown{num_bytes: 4}),
+	};
+
+	Ok(op)
+}
+
+#[allow(unused)]
 fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match x_xo(instr) {
 		23  => x_rtralrb(Mne::Lwzx,  instr),
@@ -180,6 +195,8 @@ fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> 
 #[allow(unused)]
 pub fn decode(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match opcd(instr) {
+		19 => return decode_op_19(instr, addr, uarch),
+
 		31 => return decode_special(instr, addr, uarch),
 
 		32 => d_rtdral(Mne::Lwz, instr),
@@ -236,7 +253,9 @@ mod tests {
 		Normal{ instr: u32, asm: &'static str, op: Op },
 	}
 
-	static TEST_CASES: [TestCase; 44] = [
+	static TEST_CASES: [TestCase; 45] = [
+		TestCase::Normal{ instr: 0x4C00012C, asm: "isync",                  op: Op::Implied(Mne::Isync) },
+
 		TestCase::Normal{ instr: 0x89230080, asm: "lbz     r9,128(r3)",     op: Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3)) },
 		TestCase::Normal{ instr: 0x88EAB004, asm: "lbz     r7,-20476(r10)", op: Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10)) },
 		TestCase::Normal{ instr: 0x88000000, asm: "lbz     r0,0(0)",        op: Op::RtDRa(Mne::Lbz, Reg::Gpr(0),      0, Reg::LiteralZero) },
