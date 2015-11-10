@@ -230,141 +230,103 @@ impl Disassembler for PpcDisasm {
 mod tests {
 	use super::*;
 
-	fn decode_i(instr: u32) -> Op {
-		decode(instr, 0, Uarch::Ppc206B).unwrap()
+	use super::super::Disassembler;
+
+	enum TestCase {
+		Normal{ instr: u32, asm: &'static str, op: Op },
+	}
+
+	static TEST_CASES: [TestCase; 44] = [
+		TestCase::Normal{ instr: 0x89230080, asm: "lbz     r9,128(r3)",     op: Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3)) },
+		TestCase::Normal{ instr: 0x88EAB004, asm: "lbz     r7,-20476(r10)", op: Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10)) },
+		TestCase::Normal{ instr: 0x88000000, asm: "lbz     r0,0(0)",        op: Op::RtDRa(Mne::Lbz, Reg::Gpr(0),      0, Reg::LiteralZero) },
+
+		TestCase::Normal{ instr: 0x8D23FFFF, asm: "lbzu    r9,-1(r3)",      op :Op::RtDRa(Mne::Lbzu, Reg::Gpr(9),-1,Reg::Gpr(3)) },
+		TestCase::Normal{ instr: 0x8C000000, asm: "lbzu    r0,0(r0)",       op :Op::RtDRa(Mne::Lbzu, Reg::Gpr(0),0,Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7D2348EE, asm: "lbzux   r9,r3,r9",       op: Op::RtRaRb(Mne::Lbzux, Reg::Gpr(9), Reg::Gpr( 3), Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x7D0A40EE, asm: "lbzux   r8,r10,r8",      op: Op::RtRaRb(Mne::Lbzux, Reg::Gpr(8), Reg::Gpr(10), Reg::Gpr(8)) },
+		TestCase::Normal{ instr: 0x7C0000EE, asm: "lbzux   r0,r0,r0",       op: Op::RtRaRb(Mne::Lbzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7C7F50AE, asm: "lbzx    r3,r31,r10",     op: Op::RtRaRb(Mne::Lbzx, Reg::Gpr( 3), Reg::Gpr(31), Reg::Gpr(10)) },
+		TestCase::Normal{ instr: 0x7D4340AE, asm: "lbzx    r10,r3,r8",      op: Op::RtRaRb(Mne::Lbzx, Reg::Gpr(10), Reg::Gpr( 3), Reg::Gpr( 8)) },
+		TestCase::Normal{ instr: 0x7C0000AE, asm: "lbzx    r0,0,r0",        op: Op::RtRaRb(Mne::Lbzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0xA8050000, asm: "lha     r0,0(r5)",       op: Op::RtDRa(Mne::Lha, Reg::Gpr(0), 0, Reg::Gpr(5)) },
+		TestCase::Normal{ instr: 0xA8E70002, asm: "lha     r7,2(r7)",       op: Op::RtDRa(Mne::Lha, Reg::Gpr(7), 2, Reg::Gpr(7)) },
+		TestCase::Normal{ instr: 0xA8000000, asm: "lha     r0,0(0)",        op: Op::RtDRa(Mne::Lha, Reg::Gpr(0), 0, Reg::LiteralZero) },
+
+		TestCase::Normal{ instr: 0xACE80002, asm: "lhau    r7,2(r8)",       op: Op::RtDRa(Mne::Lhau, Reg::Gpr(7), 2, Reg::Gpr(8)) },
+		TestCase::Normal{ instr: 0xACC40002, asm: "lhau    r6,2(r4)",       op: Op::RtDRa(Mne::Lhau, Reg::Gpr(6), 2, Reg::Gpr(4)) },
+		TestCase::Normal{ instr: 0xAC000000, asm: "lhau    r0,0(r0)",       op: Op::RtDRa(Mne::Lhau, Reg::Gpr(0), 0, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7C7F52EE, asm: "lhaux   r3,r31,r10",     op: Op::RtRaRb(Mne::Lhaux, Reg::Gpr( 3), Reg::Gpr(31), Reg::Gpr(10)) },
+		TestCase::Normal{ instr: 0x7D4342EE, asm: "lhaux   r10,r3,r8",      op: Op::RtRaRb(Mne::Lhaux, Reg::Gpr(10), Reg::Gpr( 3), Reg::Gpr( 8)) },
+		TestCase::Normal{ instr: 0x7C0002EE, asm: "lhaux   r0,r0,r0",       op: Op::RtRaRb(Mne::Lhaux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7CFB3AAE, asm: "lhax    r7,r27,r7",      op: Op::RtRaRb(Mne::Lhax, Reg::Gpr( 7), Reg::Gpr(27), Reg::Gpr(7)) },
+		TestCase::Normal{ instr: 0x7DDE4AAE, asm: "lhax    r14,r30,r9",     op: Op::RtRaRb(Mne::Lhax, Reg::Gpr(14), Reg::Gpr(30), Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x7C0002AE, asm: "lhax    r0,0,r0",        op: Op::RtRaRb(Mne::Lhax, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0xA09E0008, asm: "lhz     r4,8(r30)",      op: Op::RtDRa(Mne::Lhz, Reg::Gpr(4),      8, Reg::Gpr(30)) },
+		TestCase::Normal{ instr: 0xA0E9B328, asm: "lhz     r7,-19672(r9)",  op: Op::RtDRa(Mne::Lhz, Reg::Gpr(7), -19672, Reg::Gpr( 9)) },
+		TestCase::Normal{ instr: 0xA0000000, asm: "lhz     r0,0(0)",        op: Op::RtDRa(Mne::Lhz, Reg::Gpr(0), 0, Reg::LiteralZero) },
+
+		TestCase::Normal{ instr: 0xA4E80002, asm: "lhzu    r7,2(r8)",       op: Op::RtDRa(Mne::Lhzu, Reg::Gpr(7), 2, Reg::Gpr(8)) },
+		TestCase::Normal{ instr: 0xA4000000, asm: "lhzu    r0,0(r0)",       op: Op::RtDRa(Mne::Lhzu, Reg::Gpr(0), 0, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7D44A26E, asm: "lhzux   r10,r4,r20",     op: Op::RtRaRb(Mne::Lhzux, Reg::Gpr(10), Reg::Gpr(4), Reg::Gpr(20)) },
+		TestCase::Normal{ instr: 0x7C00026E, asm: "lhzux   r0,r0,r0",       op: Op::RtRaRb(Mne::Lhzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7D674A2E, asm: "lhzx    r11,r7,r9",      op: Op::RtRaRb(Mne::Lhzx, Reg::Gpr(11), Reg::Gpr(7), Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x7CC64A2E, asm: "lhzx    r6,r6,r9",       op: Op::RtRaRb(Mne::Lhzx, Reg::Gpr( 6), Reg::Gpr(6), Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x7C00022E, asm: "lhzx    r0,0,r0",        op: Op::RtRaRb(Mne::Lhzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x812985B0, asm: "lwz     r9,-31312(r9)", op: Op::RtDRa(Mne::Lwz, Reg::Gpr(9), -31312, Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x80890008, asm: "lwz     r4,8(r9)",      op: Op::RtDRa(Mne::Lwz, Reg::Gpr(4),      8, Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x80000000, asm: "lwz     r0,0(0)",       op: Op::RtDRa(Mne::Lwz, Reg::Gpr(0), 0, Reg::LiteralZero) },
+
+		TestCase::Normal{ instr: 0x847F0004, asm: "lwzu    r3,4(r31)",     op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(3), 4, Reg::Gpr(31)) },
+		TestCase::Normal{ instr: 0x85060004, asm: "lwzu    r8,4(r6)",      op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(8), 4, Reg::Gpr( 6)) },
+		TestCase::Normal{ instr: 0x84000000, asm: "lwzu    r0,0(r0)",      op: Op::RtDRa(Mne::Lwzu, Reg::Gpr(0), 0, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7D3F486E, asm: "lwzux   r9,r31,r9",     op: Op::RtRaRb(Mne::Lwzux, Reg::Gpr(9), Reg::Gpr(31), Reg::Gpr(9)) },
+		TestCase::Normal{ instr: 0x7C00006E, asm: "lwzux   r0,r0,r0",      op: Op::RtRaRb(Mne::Lwzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7F8A482E, asm: "lwzx    r28,r10,r9",    op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(28), Reg::Gpr(10), Reg::Gpr( 9)) },
+		TestCase::Normal{ instr: 0x7D09502E, asm: "lwzx    r8,r9,r10",     op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr( 8), Reg::Gpr( 9), Reg::Gpr(10)) },
+		TestCase::Normal{ instr: 0x7C00002E, asm: "lwzx    r0,0,r0",       op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
+	];
+
+	#[test]
+	fn decode_instrs() {
+		for test_case in TEST_CASES.iter() {
+			match test_case {
+				&TestCase::Normal{instr, ref op, ..} => {
+					assert_eq!(&decode(instr, 0, Uarch::Ppc206B).unwrap(), op)
+				},
+			}
+		}
 	}
 
 	#[test]
-	fn decode_lbz() {
-		assert_eq!(decode_i(0x89230080), Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3)));
-		assert_eq!(decode_i(0x88EAB004), Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10)));
+	fn disasm_instrs() {
+		let mut buffer: [u8;4] = [0; 4];
+		let disasm: Box<Disassembler> = Box::new(PpcDisasm);
 
-		assert_eq!(decode_i(0x88000000), Op::RtDRa(Mne::Lbz, Reg::Gpr(0), 0, Reg::LiteralZero));
-	}
+		for test_case in TEST_CASES.iter() {
+			match test_case {
+				&TestCase::Normal{instr, asm, ..} => {
+					buffer[0] = (instr >> 24) as u8;
+					buffer[1] = (instr >> 16) as u8;
+					buffer[2] = (instr >> 8)  as u8;
+					buffer[3] = (instr >> 0)  as u8;
 
-	#[test]
-	fn disasm_lbz() {
-		assert_eq!(op_to_str(&Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3))), "lbz     r9,128(r3)");
-		assert_eq!(op_to_str(&Op::RtDRa(Mne::Lbz, Reg::Gpr(7), -20476, Reg::Gpr(10))), "lbz     r7,-20476(r10)");
-
-		assert_eq!(op_to_str(&Op::RtDRa(Mne::Lbz, Reg::Gpr(0), 0, Reg::LiteralZero)), "lbz     r0,0(0)");
-	}
-
-	#[test]
-	fn decode_lbzu() {
-		assert_eq!(decode_i(0x8D23FFFF), Op::RtDRa(Mne::Lbzu, Reg::Gpr(9), -1, Reg::Gpr(3)));
-
-		assert_eq!(decode_i(0x8C000000), Op::RtDRa(Mne::Lbzu, Reg::Gpr(0), 0, Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lbzux() {
-		assert_eq!(decode_i(0x7D2348EE), Op::RtRaRb(Mne::Lbzux, Reg::Gpr(9), Reg::Gpr( 3), Reg::Gpr(9)));
-		assert_eq!(decode_i(0x7D0A40EE), Op::RtRaRb(Mne::Lbzux, Reg::Gpr(8), Reg::Gpr(10), Reg::Gpr(8)));
-
-		assert_eq!(decode_i(0x7C0000EE), Op::RtRaRb(Mne::Lbzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lbzx() {
-		assert_eq!(decode_i(0x7C7F50AE), Op::RtRaRb(Mne::Lbzx, Reg::Gpr( 3), Reg::Gpr(31), Reg::Gpr(10)));
-		assert_eq!(decode_i(0x7D4340AE), Op::RtRaRb(Mne::Lbzx, Reg::Gpr(10), Reg::Gpr( 3), Reg::Gpr( 8)));
-
-		assert_eq!(decode_i(0x7C0000AE), Op::RtRaRb(Mne::Lbzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lha() {
-		assert_eq!(decode_i(0xA8050000), Op::RtDRa(Mne::Lha, Reg::Gpr(0), 0, Reg::Gpr(5)));
-		assert_eq!(decode_i(0xA8E70002), Op::RtDRa(Mne::Lha, Reg::Gpr(7), 2, Reg::Gpr(7)));
-
-		assert_eq!(decode_i(0xA8000000), Op::RtDRa(Mne::Lha, Reg::Gpr(0), 0, Reg::LiteralZero));
-	}
-
-	#[test]
-	fn decode_lhau() {
-		assert_eq!(decode_i(0xACE80002), Op::RtDRa(Mne::Lhau, Reg::Gpr(7), 2, Reg::Gpr(8)));
-		assert_eq!(decode_i(0xACC40002), Op::RtDRa(Mne::Lhau, Reg::Gpr(6), 2, Reg::Gpr(4)));
-
-
-		assert_eq!(decode_i(0xAC000000), Op::RtDRa(Mne::Lhau, Reg::Gpr(0), 0, Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lhaux() {
-		assert_eq!(decode_i(0x7C7F52EE), Op::RtRaRb(Mne::Lhaux, Reg::Gpr( 3), Reg::Gpr(31), Reg::Gpr(10)));
-		assert_eq!(decode_i(0x7D4342EE), Op::RtRaRb(Mne::Lhaux, Reg::Gpr(10), Reg::Gpr( 3), Reg::Gpr( 8)));
-
-		assert_eq!(decode_i(0x7C0002EE), Op::RtRaRb(Mne::Lhaux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lhax() {
-		assert_eq!(decode_i(0x7CFB3AAE), Op::RtRaRb(Mne::Lhax, Reg::Gpr( 7), Reg::Gpr(27), Reg::Gpr(7)));
-		assert_eq!(decode_i(0x7DDE4AAE), Op::RtRaRb(Mne::Lhax, Reg::Gpr(14), Reg::Gpr(30), Reg::Gpr(9)));
-
-		assert_eq!(decode_i(0x7C0002AE), Op::RtRaRb(Mne::Lhax, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lhz() {
-		assert_eq!(decode_i(0xA09E0008), Op::RtDRa(Mne::Lhz, Reg::Gpr(4),      8, Reg::Gpr(30)));
-		assert_eq!(decode_i(0xA0E9B328), Op::RtDRa(Mne::Lhz, Reg::Gpr(7), -19672, Reg::Gpr( 9)));
-
-		assert_eq!(decode_i(0xA0000000), Op::RtDRa(Mne::Lhz, Reg::Gpr(0), 0, Reg::LiteralZero));
-	}
-
-	#[test]
-	fn decode_lhzu() {
-		assert_eq!(decode_i(0xA4E80002), Op::RtDRa(Mne::Lhzu, Reg::Gpr(7), 2, Reg::Gpr(8)));
-
-		assert_eq!(decode_i(0xA4000000), Op::RtDRa(Mne::Lhzu, Reg::Gpr(0), 0, Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lhzux() {
-		assert_eq!(decode_i(0x7D44A26E), Op::RtRaRb(Mne::Lhzux, Reg::Gpr(10), Reg::Gpr(4), Reg::Gpr(20)));
-
-		assert_eq!(decode_i(0x7C00026E), Op::RtRaRb(Mne::Lhzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lhzx() {
-		assert_eq!(decode_i(0x7D674A2E), Op::RtRaRb(Mne::Lhzx, Reg::Gpr(11), Reg::Gpr(7), Reg::Gpr(9)));
-		assert_eq!(decode_i(0x7CC64A2E), Op::RtRaRb(Mne::Lhzx, Reg::Gpr( 6), Reg::Gpr(6), Reg::Gpr(9)));
-
-		assert_eq!(decode_i(0x7C00022E), Op::RtRaRb(Mne::Lhzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lwz() {
-		assert_eq!(decode_i(0x812985B0), Op::RtDRa(Mne::Lwz, Reg::Gpr(9), -31312, Reg::Gpr(9)));
-		assert_eq!(decode_i(0x80890008), Op::RtDRa(Mne::Lwz, Reg::Gpr(4),      8, Reg::Gpr(9)));
-
-		assert_eq!(decode_i(0x80000000), Op::RtDRa(Mne::Lwz, Reg::Gpr(0), 0, Reg::LiteralZero));
-	}
-
-	#[test]
-	fn decode_lwzu() {
-		assert_eq!(decode_i(0x847F0004), Op::RtDRa(Mne::Lwzu, Reg::Gpr(3), 4, Reg::Gpr(31)));
-		assert_eq!(decode_i(0x85060004), Op::RtDRa(Mne::Lwzu, Reg::Gpr(8), 4, Reg::Gpr( 6)));
-
-		assert_eq!(decode_i(0x84000000), Op::RtDRa(Mne::Lwzu, Reg::Gpr(0), 0, Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lwzux() {
-		assert_eq!(decode_i(0x7D3F486E), Op::RtRaRb(Mne::Lwzux, Reg::Gpr(9), Reg::Gpr(31), Reg::Gpr(9)));
-
-		assert_eq!(decode_i(0x7C00006E), Op::RtRaRb(Mne::Lwzux, Reg::Gpr(0), Reg::Gpr(0), Reg::Gpr(0)));
-	}
-
-	#[test]
-	fn decode_lwzx() {
-		assert_eq!(decode_i(0x7F8A482E), Op::RtRaRb(Mne::Lwzx, Reg::Gpr(28), Reg::Gpr(10), Reg::Gpr( 9)));
-		assert_eq!(decode_i(0x7D09502E), Op::RtRaRb(Mne::Lwzx, Reg::Gpr( 8), Reg::Gpr( 9), Reg::Gpr(10)));
-
-		assert_eq!(decode_i(0x7C00002E), Op::RtRaRb(Mne::Lwzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)));
+					assert_eq!(disasm.disassemble(0, &buffer),
+					           Ok((asm.to_string(), 4)));
+				},
+			}
+		}
 	}
 }
 
