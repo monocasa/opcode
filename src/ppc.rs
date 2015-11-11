@@ -44,12 +44,14 @@ pub enum Mne {
 	Lwzu,
 	Lwzux,
 	Lwzx,
+	Mtmsrd,
 	Mtspr,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Op {
 	Implied(Mne),
+	RsL(Mne, Reg, u8),
 	RtDRa(Mne, Reg, i16, Reg),
 	RtRaRb(Mne, Reg, Reg, Reg),
 	SprRs(Mne, Reg, Reg),
@@ -76,6 +78,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Lwzu   => "lwzu",
 		&Mne::Lwzux  => "lwzux",
 		&Mne::Lwzx   => "lwzx",
+		&Mne::Mtmsrd => "mtmsrd",
 		&Mne::Mtspr  => "mtspr",
 	}.to_string()
 }
@@ -92,6 +95,11 @@ fn reg_to_str(reg: &Reg) -> String {
 pub fn op_to_str(op: &Op) -> String {
 	match op {
 		&Op::Implied(ref mne)                        => format!("{}", mne_to_str(&mne)),
+
+		&Op::RsL(ref mne, ref rs, ref l)             => format!("{:<7} {},{}",
+		                                                        mne_to_str(&mne),
+		                                                        reg_to_str(&rs),
+		                                                        l),
 
 		&Op::RtDRa(ref mne, ref rt, ref d, ref ra)   => format!("{:<7} {},{}({})",
 		                                                        mne_to_str(&mne),
@@ -179,6 +187,10 @@ fn xfx_sprrs(mne: Mne, instr: u32) -> Op {
 	Op::SprRs(mne, xfx_spr(instr), x_rs(instr))
 }
 
+fn xl_mtmsrd(instr: u32) -> Op {
+	Op::RsL(Mne::Mtmsrd, x_rs(instr), ((instr >> 16) & 1) as u8)
+}
+
 #[allow(unused)]
 fn decode_op_19(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> {
 	let op = match x_xo(instr) {
@@ -200,6 +212,8 @@ fn decode_special(instr: u32, addr: Addr, uarch: Uarch) -> Result<Op, DisError> 
 		87  => x_rtralrb(Mne::Lbzx,  instr),
 
 		119 => x_rtrarb( Mne::Lbzux, instr),
+
+		178 => xl_mtmsrd(instr),
 
 		279 => x_rtralrb(Mne::Lhzx,  instr),
 
@@ -278,7 +292,7 @@ mod tests {
 		Normal{ instr: u32, asm: &'static str, op: Op },
 	}
 
-	static TEST_CASES: [TestCase; 47] = [
+	static TEST_CASES: [TestCase; 48] = [
 		TestCase::Normal{ instr: 0x4C00012C, asm: "isync",                  op: Op::Implied(Mne::Isync) },
 
 		TestCase::Normal{ instr: 0x89230080, asm: "lbz     r9,128(r3)",     op: Op::RtDRa(Mne::Lbz, Reg::Gpr(9),    128, Reg::Gpr( 3)) },
@@ -340,6 +354,8 @@ mod tests {
 		TestCase::Normal{ instr: 0x7F8A482E, asm: "lwzx    r28,r10,r9",     op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(28), Reg::Gpr(10), Reg::Gpr( 9)) },
 		TestCase::Normal{ instr: 0x7D09502E, asm: "lwzx    r8,r9,r10",      op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr( 8), Reg::Gpr( 9), Reg::Gpr(10)) },
 		TestCase::Normal{ instr: 0x7C00002E, asm: "lwzx    r0,0,r0",        op: Op::RtRaRb(Mne::Lwzx, Reg::Gpr(0), Reg::LiteralZero, Reg::Gpr(0)) },
+
+		TestCase::Normal{ instr: 0x7DA10164, asm: "mtmsrd  r13,1",          op: Op::RsL(Mne::Mtmsrd, Reg::Gpr(13), 1) },
 
 		TestCase::Normal{ instr: 0x7C7E4BA6, asm: "mtspr   318,r3",         op: Op::SprRs(Mne::Mtspr, Reg::Spr(318), Reg::Gpr(3)) },
 		TestCase::Normal{ instr: 0x7D51FBA6, asm: "mtspr   1009,r10",       op: Op::SprRs(Mne::Mtspr, Reg::Spr(1009), Reg::Gpr(10)) },
