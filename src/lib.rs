@@ -1,10 +1,12 @@
 pub mod arm;
 pub mod chip8;
+pub mod mips;
 pub mod ppc;
 
 pub enum Arch {
 	Arm,
 	Chip8,
+	Mips,
 	PowerPC,
 }
 
