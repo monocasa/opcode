@@ -20,6 +20,13 @@ pub enum DisError {
 	MemOverflow,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum AddrTarget {
+	Absolute(Addr),
+	Relative(i64),
+	Symbol(String),
+}
+
 pub type DisResult = Result<(String, usize), DisError>;
 
 pub trait Disassembler {
