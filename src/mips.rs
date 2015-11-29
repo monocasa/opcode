@@ -1,4 +1,4 @@
-use super::{Addr, Disassembler, DisError, DisResult};
+use super::{Addr, AddrTarget, Disassembler, DisError, DisResult};
 
 pub enum Uarch {
 	LsiR2000,       // Canonical MIPS-I processor
@@ -158,6 +158,7 @@ pub enum Op {
 	RdRsRt(Mne, Reg, Reg, Reg),
 	RdRtSa(Mne, Reg, Reg, u8),
 	Rs(Mne, Reg),
+	RsRtTarget(Mne, Reg, Reg, AddrTarget),
 	RtOffsetBase(Mne, Reg, i16, Reg),
 	RtRs(Mne, Reg, Reg),
 	RtRsI16(Mne, Reg, Reg, i16),
@@ -196,6 +197,10 @@ fn immi16(instr: u32) -> i16 {
 	(instr & 0xFFFF) as i16
 }
 
+fn cond_branch_offset(instr: u32) -> AddrTarget {
+	AddrTarget::Relative((immi16(instr) as i64) << 2)
+}
+
 #[allow(unused_variables)]
 fn decode_special(instr: u32, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
 	let op = match special_function(instr) {
@@ -227,6 +232,8 @@ fn convert_to_pseudo_op(op: Op) -> Op {
 pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
 	let op = match opcode(instr) {
 		0b000000 => try!(decode_special(instr, uarch_info, decode_options)),
+
+		0b000100 => Op::RsRtTarget(Mne::Beq, rs(instr), rt(instr), cond_branch_offset(instr)),
 
 		0b001001 => Op::RtRsI16(Mne::Addiu, rt(instr), rs(instr), immi16(instr)),
 
@@ -289,6 +296,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Add   => "add",
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
+		&Mne::Beq   => "beq",
 		&Mne::Jalr  => "jalr",
 		&Mne::Jr    => "jr",
 		&Mne::Lw    => "lw",
@@ -301,7 +309,15 @@ fn mne_to_str(mne: &Mne) -> String {
 	}.to_string()
 }
 
-fn op_to_str(op: &Op) -> String {
+fn target_to_str(addr: Addr, target: &AddrTarget) -> String {
+	match target {
+		&AddrTarget::Absolute(abs)   => format!("{:#x}", abs),
+		&AddrTarget::Relative(rel)   => format!("{:#x}", rel + (addr as i64) + 4),
+		&AddrTarget::Symbol(ref sym) => format!("{}", sym),
+	}
+}
+
+fn op_to_str(addr: Addr, op: &Op) -> String {
 	let (mne, args_str) = match op {
 		&Op::Implied(ref mne) => (mne.clone(), None),
 
@@ -323,6 +339,10 @@ fn op_to_str(op: &Op) -> String {
 
 		&Op::Rs(ref mne, ref rs) => {
 			(mne.clone(), Some(format!("{}", reg_to_str(rs))))
+		},
+
+		&Op::RsRtTarget(ref mne, ref rs, ref rt, ref target) => {
+			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rs), reg_to_str(rt), target_to_str(addr, target))))
 		},
 
 		&Op::RtOffsetBase(ref mne, ref rt, offset, ref base) => {
@@ -361,7 +381,7 @@ pub fn disasm(addr: Addr, buf: &[u8], uarch_info: &UarchInfo, decode_options: &D
 
 	let op = try!(decode(instr, addr, uarch_info, decode_options));
 
-	Ok((op_to_str(&op), 4))
+	Ok((op_to_str(addr, &op), 4))
 }
 
 pub struct MipsDisasm;
@@ -384,12 +404,15 @@ impl Disassembler for MipsDisasm {
 mod tests {
 	use super::*;
 
+	use super::super::*;
+
 	#[allow(dead_code)]
 	enum TestCase {
 		Normal{ instr: u32, asm: &'static str, op: Op },
+		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 16] = [
+	static BASE_TEST_CASES: [TestCase; 19] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -413,6 +436,10 @@ mod tests {
 		TestCase::Normal{ instr: 0xAFBF0014, asm: "sw      ra,20(sp)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(RA), 20, Reg::Gpr(SP)) },
 		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
 		TestCase::Normal{ instr: 0xAFC00030, asm: "sw      zero,48(s8)", op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr( 0), 48, Reg::Gpr(S8)) },
+
+		TestCase::Branch{ addr: 0x80000368, instr: 0x10620033, asm: "beq     v1,v0,0x80000438", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(204)) },
+		TestCase::Branch{ addr: 0x80001424, instr: 0x1062FFF7, asm: "beq     v1,v0,0x80001404", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(-36)) },
+		TestCase::Branch{ addr: 0x80001BFC, instr: 0x1082FFE8, asm: "beq     a0,v0,0x80001ba0", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(A0), Reg::Gpr(V0), AddrTarget::Relative(-96)) },
 	];
 
 	#[test]
@@ -425,6 +452,10 @@ mod tests {
 			match test_case {
 				&TestCase::Normal{instr, ref op, ..} => {
 					assert_eq!(&decode(instr, 0, uarch_info, &no_pseudo_ops).unwrap(), op)
+				},
+
+				&TestCase::Branch{addr, instr, ref op, ..} => {
+					assert_eq!(&decode(instr, addr, uarch_info, &no_pseudo_ops).unwrap(), op)
 				},
 			}
 		}
@@ -449,6 +480,16 @@ mod tests {
 					assert_eq!(disasm(0, &buffer, uarch_info, &no_pseudo_ops),
 					           Ok((asm.to_string(), 4)));
 				},
+
+				&TestCase::Branch{addr, instr, ref asm, ..} => {
+					buffer[0] = (instr >> 24) as u8;
+					buffer[1] = (instr >> 16) as u8;
+					buffer[2] = (instr >> 8)  as u8;
+					buffer[3] = (instr >> 0)  as u8;
+
+					assert_eq!(disasm(addr, &buffer, uarch_info, &no_pseudo_ops),
+					           Ok((asm.to_string(), 4)));
+				},
 			}
 		}
 	}
@@ -470,6 +511,8 @@ mod tests {
 				&TestCase::Normal{instr, ref op, ..} => {
 					assert_eq!(&decode(instr, 0, uarch_info, &pseudo_ops).unwrap(), op)
 				},
+
+				_ => {},
 			}
 		}
 	}
@@ -493,6 +536,8 @@ mod tests {
 					assert_eq!(disasm(0, &buffer, uarch_info, &pseudo_ops),
 					           Ok((asm.to_string(), 4)));
 				},
+
+				_ => {},
 			}
 		}
 	}
