@@ -243,6 +243,7 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 		0b000100 => Op::RsRtTarget(Mne::Beq, rs(instr), rt(instr), cond_branch_offset(instr)),
 
 		0b001001 => Op::RtRsI16(Mne::Addiu, rt(instr), rs(instr), immi16(instr)),
+		0b001010 => Op::RtRsI16(Mne::Slti,  rt(instr), rs(instr), immi16(instr)),
 
 		0b100011 => Op::RtOffsetBase(Mne::Lw, rt(instr), immi16(instr), rs(instr)),
 
@@ -309,6 +310,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Jr    => "jr",
 		&Mne::Lw    => "lw",
 		&Mne::Sll   => "sll",
+		&Mne::Slti  => "slti",
 		&Mne::Sw    => "sw",
 
 		&Mne::Move  => "move",
@@ -424,7 +426,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 20] = [
+	static BASE_TEST_CASES: [TestCase; 21] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -444,6 +446,8 @@ mod tests {
 		TestCase::Normal{ instr: 0x8FBF0014, asm: "lw      ra,20(sp)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(RA),     20, Reg::Gpr(SP)) },
 
 		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
+
+		TestCase::Normal{ instr: 0x28620031, asm: "slti    v0,v1,49", op: Op::RtRsI16(Mne::Slti, Reg::Gpr(V0), Reg::Gpr(V1), 49) },
 
 		TestCase::Normal{ instr: 0xAFBF0014, asm: "sw      ra,20(sp)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(RA), 20, Reg::Gpr(SP)) },
 		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
