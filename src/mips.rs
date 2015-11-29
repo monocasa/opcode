@@ -157,6 +157,7 @@ pub enum Op {
 	RdRs(Mne, Reg, Reg),
 	RdRsRt(Mne, Reg, Reg, Reg),
 	RdRtSa(Mne, Reg, Reg, u8),
+	Rs(Mne, Reg),
 	RtOffsetBase(Mne, Reg, i16, Reg),
 	RtRs(Mne, Reg, Reg),
 	RtRsI16(Mne, Reg, Reg, i16),
@@ -200,6 +201,7 @@ fn decode_special(instr: u32, uarch_info: &UarchInfo, decode_options: &DecodeOpt
 	let op = match special_function(instr) {
 		0b000000 => Op::RdRtSa(Mne::Sll, rd(instr), rt(instr), sa(instr)),
 
+		0b001000 => Op::Rs(Mne::Jr, rs(instr)),
 		0b001001 => Op::RdRs(Mne::Jalr, rd(instr), rs(instr)),
 
 		0b100000 => Op::RdRsRt(Mne::Add,  rd(instr), rs(instr), rt(instr)),
@@ -288,6 +290,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
 		&Mne::Jalr  => "jalr",
+		&Mne::Jr    => "jr",
 		&Mne::Lw    => "lw",
 		&Mne::Sll   => "sll",
 		&Mne::Sw    => "sw",
@@ -316,6 +319,10 @@ fn op_to_str(op: &Op) -> String {
 
 		&Op::RdRtSa(ref mne, ref rd, ref rt, sa) => {
 			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rd), reg_to_str(rt), sa)))
+		},
+
+		&Op::Rs(ref mne, ref rs) => {
+			(mne.clone(), Some(format!("{}", reg_to_str(rs))))
 		},
 
 		&Op::RtOffsetBase(ref mne, ref rt, offset, ref base) => {
@@ -382,7 +389,7 @@ mod tests {
 		Normal{ instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 14] = [
+	static BASE_TEST_CASES: [TestCase; 16] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -392,6 +399,9 @@ mod tests {
 		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
 		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
 		TestCase::Normal{ instr: 0x00C04809, asm: "jalr    t1,a2",       op: Op::RdRs(Mne::Jalr, Reg::Gpr(T1), Reg::Gpr(A2)) },
+
+		TestCase::Normal{ instr: 0x00400008, asm: "jr      v0", op: Op::Rs(Mne::Jr, Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x03E00008, asm: "jr      ra", op: Op::Rs(Mne::Jr, Reg::Gpr(RA)) },
 
 		TestCase::Normal{ instr: 0x8C43BB90, asm: "lw      v1,-17520(v0)", op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1), -17520, Reg::Gpr(V0)) },
 		TestCase::Normal{ instr: 0x8C430000, asm: "lw      v1,0(v0)",      op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1),      0, Reg::Gpr(V0)) },
