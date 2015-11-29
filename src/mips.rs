@@ -241,6 +241,7 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 		0b000010 => Op::Target(Mne::J, jump_target(instr, addr)),
 
 		0b000100 => Op::RsRtTarget(Mne::Beq, rs(instr), rt(instr), cond_branch_offset(instr)),
+		0b000101 => Op::RsRtTarget(Mne::Bne, rs(instr), rt(instr), cond_branch_offset(instr)),
 
 		0b001001 => Op::RtRsI16(Mne::Addiu, rt(instr), rs(instr), immi16(instr)),
 		0b001010 => Op::RtRsI16(Mne::Slti,  rt(instr), rs(instr), immi16(instr)),
@@ -305,6 +306,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
 		&Mne::Beq   => "beq",
+		&Mne::Bne   => "bne",
 		&Mne::J     => "j",
 		&Mne::Jalr  => "jalr",
 		&Mne::Jr    => "jr",
@@ -426,7 +428,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 21] = [
+	static BASE_TEST_CASES: [TestCase; 23] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -456,6 +458,9 @@ mod tests {
 		TestCase::Branch{ addr: 0x80000368, instr: 0x10620033, asm: "beq     v1,v0,0x80000438", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(204)) },
 		TestCase::Branch{ addr: 0x80001424, instr: 0x1062FFF7, asm: "beq     v1,v0,0x80001404", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(-36)) },
 		TestCase::Branch{ addr: 0x80001BFC, instr: 0x1082FFE8, asm: "beq     a0,v0,0x80001ba0", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(A0), Reg::Gpr(V0), AddrTarget::Relative(-96)) },
+
+		TestCase::Branch{ addr: 0x8001CB34, instr: 0x1443000C, asm: "bne     v0,v1,0x8001cb68", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(V0), Reg::Gpr(V1), AddrTarget::Relative( 48)) },
+		TestCase::Branch{ addr: 0x80029890, instr: 0x1501FFF2, asm: "bne     t0,at,0x8002985c", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(T0), Reg::Gpr(AT), AddrTarget::Relative(-56)) },
 
 		TestCase::Branch{ addr: 0x80000914, instr: 0x0800024a, asm: "j       0x80000928", op: Op::Target(Mne::J, AddrTarget::Absolute(0x80000928)) },
 	];
