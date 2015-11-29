@@ -340,7 +340,7 @@ impl Disassembler for MipsDisasm {
 	fn disassemble(&self, addr: Addr, buf: &[u8]) -> DisResult  {
 		let uarch_info = uarch_info_for_uarch(Uarch::HarvardMips161);
 
-		let no_pseudo_ops = DecodeOptions { decode_pseudo_ops: false };
+		let no_pseudo_ops = DecodeOptions { decode_pseudo_ops: true };
 
 		disasm(addr, buf, uarch_info, &no_pseudo_ops)
 	}
