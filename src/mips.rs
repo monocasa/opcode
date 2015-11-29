@@ -228,6 +228,8 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 
 		0b001001 => Op::RtRsI16(Mne::Addiu, rt(instr), rs(instr), immi16(instr)),
 
+		0b100011 => Op::RtOffsetBase(Mne::Lw, rt(instr), immi16(instr), rs(instr)),
+
 		0b101011 => Op::RtOffsetBase(Mne::Sw, rt(instr), immi16(instr), rs(instr)),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
@@ -286,6 +288,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
 		&Mne::Jalr  => "jalr",
+		&Mne::Lw    => "lw",
 		&Mne::Sll   => "sll",
 		&Mne::Sw    => "sw",
 
@@ -379,7 +382,7 @@ mod tests {
 		Normal{ instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 10] = [
+	static BASE_TEST_CASES: [TestCase; 14] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -389,6 +392,11 @@ mod tests {
 		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
 		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
 		TestCase::Normal{ instr: 0x00C04809, asm: "jalr    t1,a2",       op: Op::RdRs(Mne::Jalr, Reg::Gpr(T1), Reg::Gpr(A2)) },
+
+		TestCase::Normal{ instr: 0x8C43BB90, asm: "lw      v1,-17520(v0)", op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1), -17520, Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x8C430000, asm: "lw      v1,0(v0)",      op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1),      0, Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x8FC20018, asm: "lw      v0,24(s8)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V0),     24, Reg::Gpr(S8)) },
+		TestCase::Normal{ instr: 0x8FBF0014, asm: "lw      ra,20(sp)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(RA),     20, Reg::Gpr(SP)) },
 
 		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
 
