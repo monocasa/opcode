@@ -162,6 +162,7 @@ pub enum Op {
 	RtOffsetBase(Mne, Reg, i16, Reg),
 	RtRs(Mne, Reg, Reg),
 	RtRsI16(Mne, Reg, Reg, i16),
+	Target(Mne, AddrTarget),
 }
 
 #[allow(dead_code)]
@@ -201,6 +202,10 @@ fn cond_branch_offset(instr: u32) -> AddrTarget {
 	AddrTarget::Relative((immi16(instr) as i64) << 2)
 }
 
+fn jump_target(instr: u32, addr: Addr) -> AddrTarget {
+	AddrTarget::Absolute( (((instr & 0x03FF_FFFF) << 2) as u64) | (addr & 0xFFFF_FFFF_F000_0000_u64) )
+}
+
 #[allow(unused_variables)]
 fn decode_special(instr: u32, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
 	let op = match special_function(instr) {
@@ -232,6 +237,8 @@ fn convert_to_pseudo_op(op: Op) -> Op {
 pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
 	let op = match opcode(instr) {
 		0b000000 => try!(decode_special(instr, uarch_info, decode_options)),
+
+		0b000010 => Op::Target(Mne::J, jump_target(instr, addr)),
 
 		0b000100 => Op::RsRtTarget(Mne::Beq, rs(instr), rt(instr), cond_branch_offset(instr)),
 
@@ -297,6 +304,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
 		&Mne::Beq   => "beq",
+		&Mne::J     => "j",
 		&Mne::Jalr  => "jalr",
 		&Mne::Jr    => "jr",
 		&Mne::Lw    => "lw",
@@ -356,6 +364,10 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 		&Op::RtRs(ref mne, ref rt, ref rs) => {
 			(mne.clone(), Some(format!("{},{}", reg_to_str(rt), reg_to_str(rs))))
 		},
+
+		&Op::Target(ref mne, ref target) => {
+			(mne.clone(), Some(target_to_str(addr, target)))
+		},
 	};
 
 	match args_str {
@@ -412,7 +424,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 19] = [
+	static BASE_TEST_CASES: [TestCase; 20] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -440,6 +452,8 @@ mod tests {
 		TestCase::Branch{ addr: 0x80000368, instr: 0x10620033, asm: "beq     v1,v0,0x80000438", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(204)) },
 		TestCase::Branch{ addr: 0x80001424, instr: 0x1062FFF7, asm: "beq     v1,v0,0x80001404", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(-36)) },
 		TestCase::Branch{ addr: 0x80001BFC, instr: 0x1082FFE8, asm: "beq     a0,v0,0x80001ba0", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(A0), Reg::Gpr(V0), AddrTarget::Relative(-96)) },
+
+		TestCase::Branch{ addr: 0x80000914, instr: 0x0800024a, asm: "j       0x80000928", op: Op::Target(Mne::J, AddrTarget::Absolute(0x80000928)) },
 	];
 
 	#[test]
