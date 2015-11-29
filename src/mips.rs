@@ -66,7 +66,7 @@ pub enum Reg {
 	Gpr(u8)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Mne {
 	Add,
 	Addi,
@@ -154,6 +154,7 @@ pub enum Mne {
 #[derive(Debug, PartialEq)]
 pub enum Op {
 	Implied(Mne),
+	RdRs(Mne, Reg, Reg),
 	RdRsRt(Mne, Reg, Reg, Reg),
 	RdRtSa(Mne, Reg, Reg, u8),
 	RtRs(Mne, Reg, Reg),
@@ -197,6 +198,8 @@ fn immi16(instr: u32) -> i16 {
 fn decode_special(instr: u32, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
 	let op = match special_function(instr) {
 		0b000000 => Op::RdRtSa(Mne::Sll, rd(instr), rt(instr), sa(instr)),
+
+		0b001001 => Op::RdRs(Mne::Jalr, rd(instr), rs(instr)),
 
 		0b100000 => Op::RdRsRt(Mne::Add,  rd(instr), rs(instr), rt(instr)),
 		0b100001 => Op::RdRsRt(Mne::Addu, rd(instr), rs(instr), rt(instr)),
@@ -279,6 +282,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Add   => "add",
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
+		&Mne::Jalr  => "jalr",
 		&Mne::Sll   => "sll",
 
 		&Mne::Move  => "move",
@@ -289,22 +293,31 @@ fn mne_to_str(mne: &Mne) -> String {
 
 fn op_to_str(op: &Op) -> String {
 	let (mne, args_str) = match op {
-		&Op::Implied(ref mne) => (mne, None),
+		&Op::Implied(ref mne) => (mne.clone(), None),
+
+		&Op::RdRs(Mne::Jalr, Reg::Gpr(RA), ref rs) => {
+			(Mne::Jalr, Some(format!("{}", reg_to_str(rs))))
+		},
+
+		&Op::RdRs(ref mne, ref rd, ref rs) => {
+			(mne.clone(), Some(format!("{},{}", reg_to_str(rd), reg_to_str(rs))))
+		},
 
 		&Op::RdRsRt(ref mne, ref rd, ref rs, ref rt) => {
-			(mne, Some(format!("{},{},{}", reg_to_str(rd), reg_to_str(rs), reg_to_str(rt))))
+			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rd), reg_to_str(rs), reg_to_str(rt))))
 		},
 
 		&Op::RdRtSa(ref mne, ref rd, ref rt, sa) => {
-			(mne, Some(format!("{},{},{}", reg_to_str(rd), reg_to_str(rt), sa)))
+			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rd), reg_to_str(rt), sa)))
 		},
 
 		&Op::RtRsI16(ref mne, ref rt, ref rs, imm) => {
-			(mne, Some(format!("{},{},{}", reg_to_str(rt), reg_to_str(rs), imm)))
+			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rt), reg_to_str(rs), imm)))
 		},
 
+
 		&Op::RtRs(ref mne, ref rt, ref rs) => {
-			(mne, Some(format!("{},{}", reg_to_str(rt), reg_to_str(rs))))
+			(mne.clone(), Some(format!("{},{}", reg_to_str(rt), reg_to_str(rs))))
 		},
 	};
 
@@ -359,12 +372,16 @@ mod tests {
 		Normal{ instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 4] = [
+	static BASE_TEST_CASES: [TestCase; 7] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
 
 		TestCase::Normal{ instr: 0x27BDFFE8, asm: "addiu   sp,sp,-24",   op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(SP), Reg::Gpr(SP), -24) },
+
+		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
+		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
+		TestCase::Normal{ instr: 0x00C04809, asm: "jalr    t1,a2",       op: Op::RdRs(Mne::Jalr, Reg::Gpr(T1), Reg::Gpr(A2)) },
 
 		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
 	];
