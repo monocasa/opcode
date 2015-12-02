@@ -139,6 +139,7 @@ pub enum Mne {
 	Xori,
 
 	//Base Pseudo-ops
+	Li,
 	Move,
 	Nop,
 
@@ -159,6 +160,7 @@ pub enum Op {
 	RdRtSa(Mne, Reg, Reg, u8),
 	Rs(Mne, Reg),
 	RsRtTarget(Mne, Reg, Reg, AddrTarget),
+	RtI16(Mne, Reg, i16),
 	RtOffsetBase(Mne, Reg, i16, Reg),
 	RtRs(Mne, Reg, Reg),
 	RtRsI16(Mne, Reg, Reg, i16),
@@ -228,6 +230,8 @@ fn convert_to_pseudo_op(op: Op) -> Op {
 		Op::RdRtSa(Mne::Sll, Reg::Gpr(0), Reg::Gpr(0), 0) => Op::Implied(Mne::Nop),
 
 		Op::RdRsRt(Mne::Addu, rd, rs, Reg::Gpr(0)) => Op::RtRs(Mne::Move, rd, rs),
+
+		Op::RtRsI16(Mne::Addiu, rt, Reg::Gpr(0), imm) => Op::RtI16(Mne::Li, rt, imm),
 
 		_ => op,
 	}
@@ -315,6 +319,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Slti  => "slti",
 		&Mne::Sw    => "sw",
 
+		&Mne::Li    => "li",
 		&Mne::Move  => "move",
 		&Mne::Nop   => "nop",
 		_ => "UNKNOWN_MNE",
@@ -355,6 +360,10 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 
 		&Op::RsRtTarget(ref mne, ref rs, ref rt, ref target) => {
 			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rs), reg_to_str(rt), target_to_str(addr, target))))
+		},
+
+		&Op::RtI16(ref mne, ref rt, imm) => {
+			(mne.clone(), Some(format!("{},{}", reg_to_str(rt), imm)))
 		},
 
 		&Op::RtOffsetBase(ref mne, ref rt, offset, ref base) => {
@@ -428,12 +437,13 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 23] = [
+	static BASE_TEST_CASES: [TestCase; 24] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
 
 		TestCase::Normal{ instr: 0x27BDFFE8, asm: "addiu   sp,sp,-24",   op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(SP), Reg::Gpr(SP), -24) },
+		TestCase::Normal{ instr: 0x24020020, asm: "addiu   v0,zero,32",  op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(V0), Reg::Gpr(ZERO), 32) },
 
 		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
 		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
@@ -517,7 +527,9 @@ mod tests {
 		}
 	}
 
-	static PSEUDO_OP_TEST_CASES: [TestCase; 2] = [
+	static PSEUDO_OP_TEST_CASES: [TestCase; 3] = [
+		TestCase::Normal{ instr: 0x24020020, asm: "li      v0,32", op: Op::RtI16(Mne::Li, Reg::Gpr(V0), 32) },
+
 		TestCase::Normal{ instr: 0x00000000, asm: "nop",           op: Op::Implied(Mne::Nop) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "move    s8,sp", op: Op::RtRs(Mne::Move, Reg::Gpr(S8), Reg::Gpr(SP)) },
