@@ -351,7 +351,7 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 		},
 
 		&Op::RdRtSa(ref mne, ref rd, ref rt, sa) => {
-			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rd), reg_to_str(rt), sa)))
+			(mne.clone(), Some(format!("{},{},{:#x}", reg_to_str(rd), reg_to_str(rt), sa)))
 		},
 
 		&Op::Rs(ref mne, ref rs) => {
@@ -437,7 +437,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 24] = [
+	static BASE_TEST_CASES: [TestCase; 25] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -457,7 +457,8 @@ mod tests {
 		TestCase::Normal{ instr: 0x8FC20018, asm: "lw      v0,24(s8)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V0),     24, Reg::Gpr(S8)) },
 		TestCase::Normal{ instr: 0x8FBF0014, asm: "lw      ra,20(sp)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(RA),     20, Reg::Gpr(SP)) },
 
-		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
+		TestCase::Normal{ instr: 0x00021400, asm: "sll     v0,v0,0x10",    op: Op::RdRtSa(Mne::Sll, Reg::Gpr(V0), Reg::Gpr(V0), 0x10) },
+		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0x0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
 
 		TestCase::Normal{ instr: 0x28620031, asm: "slti    v0,v1,49", op: Op::RtRsI16(Mne::Slti, Reg::Gpr(V0), Reg::Gpr(V1), 49) },
 
