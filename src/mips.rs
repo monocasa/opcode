@@ -438,19 +438,19 @@ mod tests {
 	}
 
 	static BASE_TEST_CASES: [TestCase; 25] = [
-		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",    op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",      op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
-		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",  op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
+		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",    op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
 
-		TestCase::Normal{ instr: 0x27BDFFE8, asm: "addiu   sp,sp,-24",   op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(SP), Reg::Gpr(SP), -24) },
-		TestCase::Normal{ instr: 0x24020020, asm: "addiu   v0,zero,32",  op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(V0), Reg::Gpr(ZERO), 32) },
+		TestCase::Normal{ instr: 0x27BDFFE8, asm: "addiu   sp,sp,-24",     op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(SP), Reg::Gpr(SP), -24) },
+		TestCase::Normal{ instr: 0x24020020, asm: "addiu   v0,zero,32",    op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(V0), Reg::Gpr(ZERO), 32) },
 
-		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
-		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
-		TestCase::Normal{ instr: 0x00C04809, asm: "jalr    t1,a2",       op: Op::RdRs(Mne::Jalr, Reg::Gpr(T1), Reg::Gpr(A2)) },
+		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",            op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
+		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",            op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
+		TestCase::Normal{ instr: 0x00C04809, asm: "jalr    t1,a2",         op: Op::RdRs(Mne::Jalr, Reg::Gpr(T1), Reg::Gpr(A2)) },
 
-		TestCase::Normal{ instr: 0x00400008, asm: "jr      v0", op: Op::Rs(Mne::Jr, Reg::Gpr(V0)) },
-		TestCase::Normal{ instr: 0x03E00008, asm: "jr      ra", op: Op::Rs(Mne::Jr, Reg::Gpr(RA)) },
+		TestCase::Normal{ instr: 0x00400008, asm: "jr      v0",            op: Op::Rs(Mne::Jr, Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x03E00008, asm: "jr      ra",            op: Op::Rs(Mne::Jr, Reg::Gpr(RA)) },
 
 		TestCase::Normal{ instr: 0x8C43BB90, asm: "lw      v1,-17520(v0)", op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1), -17520, Reg::Gpr(V0)) },
 		TestCase::Normal{ instr: 0x8C430000, asm: "lw      v1,0(v0)",      op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1),      0, Reg::Gpr(V0)) },
@@ -460,11 +460,11 @@ mod tests {
 		TestCase::Normal{ instr: 0x00021400, asm: "sll     v0,v0,0x10",    op: Op::RdRtSa(Mne::Sll, Reg::Gpr(V0), Reg::Gpr(V0), 0x10) },
 		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0x0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
 
-		TestCase::Normal{ instr: 0x28620031, asm: "slti    v0,v1,49", op: Op::RtRsI16(Mne::Slti, Reg::Gpr(V0), Reg::Gpr(V1), 49) },
+		TestCase::Normal{ instr: 0x28620031, asm: "slti    v0,v1,49",      op: Op::RtRsI16(Mne::Slti, Reg::Gpr(V0), Reg::Gpr(V1), 49) },
 
-		TestCase::Normal{ instr: 0xAFBF0014, asm: "sw      ra,20(sp)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(RA), 20, Reg::Gpr(SP)) },
-		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
-		TestCase::Normal{ instr: 0xAFC00030, asm: "sw      zero,48(s8)", op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr( 0), 48, Reg::Gpr(S8)) },
+		TestCase::Normal{ instr: 0xAFBF0014, asm: "sw      ra,20(sp)",     op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(RA), 20, Reg::Gpr(SP)) },
+		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",     op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
+		TestCase::Normal{ instr: 0xAFC00030, asm: "sw      zero,48(s8)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr( 0), 48, Reg::Gpr(S8)) },
 
 		TestCase::Branch{ addr: 0x80000368, instr: 0x10620033, asm: "beq     v1,v0,0x80000438", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(204)) },
 		TestCase::Branch{ addr: 0x80001424, instr: 0x1062FFF7, asm: "beq     v1,v0,0x80001404", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(-36)) },
@@ -473,7 +473,7 @@ mod tests {
 		TestCase::Branch{ addr: 0x8001CB34, instr: 0x1443000C, asm: "bne     v0,v1,0x8001cb68", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(V0), Reg::Gpr(V1), AddrTarget::Relative( 48)) },
 		TestCase::Branch{ addr: 0x80029890, instr: 0x1501FFF2, asm: "bne     t0,at,0x8002985c", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(T0), Reg::Gpr(AT), AddrTarget::Relative(-56)) },
 
-		TestCase::Branch{ addr: 0x80000914, instr: 0x0800024a, asm: "j       0x80000928", op: Op::Target(Mne::J, AddrTarget::Absolute(0x80000928)) },
+		TestCase::Branch{ addr: 0x80000914, instr: 0x0800024a, asm: "j       0x80000928",       op: Op::Target(Mne::J, AddrTarget::Absolute(0x80000928)) },
 	];
 
 	#[test]
