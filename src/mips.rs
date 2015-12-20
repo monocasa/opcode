@@ -63,7 +63,16 @@ pub const RA:   u8 = 31;
 
 #[derive(Debug, PartialEq)]
 pub enum Reg {
-	Gpr(u8)
+	Gpr(u8),
+	Cpr(u8),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Cop {
+	C0,
+	C1,
+	C2,
+	C3,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -101,13 +110,13 @@ pub enum Mne {
 	Ll,
 	Lui,
 	Lw,
-	Lwcz,
+	Lwc(Cop),
 	Lwl,
 	Lwr,
-	Mfcz,
+	Mfc(Cop),
 	Mfhi,
 	Mflo,
-	Mtcz,
+	Mtc(Cop),
 	Mthi,
 	Mtlo,
 	Mult,
@@ -131,7 +140,7 @@ pub enum Mne {
 	Sub,
 	Subu,
 	Sw,
-	Swcz,
+	Swc(Cop),
 	Swl,
 	Syscall,
 	Swr,
@@ -162,8 +171,10 @@ pub enum Op {
 	RsRtTarget(Mne, Reg, Reg, AddrTarget),
 	RtI16(Mne, Reg, i16),
 	RtOffsetBase(Mne, Reg, i16, Reg),
+	RtRd(Mne, Reg, Reg),
 	RtRs(Mne, Reg, Reg),
 	RtRsI16(Mne, Reg, Reg, i16),
+	RtU16(Mne, Reg, u16),
 	Target(Mne, AddrTarget),
 }
 
@@ -174,6 +185,10 @@ pub struct DecodeOptions {
 
 fn opcode(instr: u32) -> u8 {
 	((instr >> 26) & 0x3F) as u8
+}
+
+fn cop_function(instr: u32) -> u8 {
+	((instr >> 21) & 0x1F) as u8
 }
 
 fn special_function(instr: u32) -> u8 {
@@ -188,6 +203,10 @@ fn rt(instr: u32) -> Reg {
 	Reg::Gpr(((instr >> 16) & 0x1F) as u8)
 }
 
+fn crd(instr: u32) -> Reg {
+	Reg::Cpr(((instr >> 11) & 0x1F) as u8)
+}
+
 fn rd(instr: u32) -> Reg {
 	Reg::Gpr(((instr >> 11) & 0x1F) as u8)
 }
@@ -198,6 +217,10 @@ fn sa(instr: u32) -> u8 {
 
 fn immi16(instr: u32) -> i16 {
 	(instr & 0xFFFF) as i16
+}
+
+fn immu16(instr: u32) -> u16 {
+	instr as u16
 }
 
 fn cond_branch_offset(instr: u32) -> AddrTarget {
@@ -218,6 +241,16 @@ fn decode_special(instr: u32, uarch_info: &UarchInfo, decode_options: &DecodeOpt
 
 		0b100000 => Op::RdRsRt(Mne::Add,  rd(instr), rs(instr), rt(instr)),
 		0b100001 => Op::RdRsRt(Mne::Addu, rd(instr), rs(instr), rt(instr)),
+
+		_ => return Err(DisError::Unknown{num_bytes: 4}),
+	};
+
+	Ok(op)
+}
+
+fn decode_cop(cop: Cop, instr: u32) -> Result<Op, DisError> {
+	let op = match cop_function(instr) {
+		0b00100 => Op::RtRd(Mne::Mtc(cop), rt(instr), crd(instr)),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
@@ -247,8 +280,15 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 		0b000100 => Op::RsRtTarget(Mne::Beq, rs(instr), rt(instr), cond_branch_offset(instr)),
 		0b000101 => Op::RsRtTarget(Mne::Bne, rs(instr), rt(instr), cond_branch_offset(instr)),
 
+		0b001000 => Op::RtRsI16(Mne::Addi,  rt(instr), rs(instr), immi16(instr)),
 		0b001001 => Op::RtRsI16(Mne::Addiu, rt(instr), rs(instr), immi16(instr)),
 		0b001010 => Op::RtRsI16(Mne::Slti,  rt(instr), rs(instr), immi16(instr)),
+
+		0b001111 => match rs(instr) {
+			Reg::Gpr(0) => Op::RtU16(Mne::Lui, rt(instr), immu16(instr)),
+			_           => return Err(DisError::Unknown{num_bytes: 4}),
+		},
+		0b010000 => try!(decode_cop(Cop::C0, instr)),
 
 		0b100011 => Op::RtOffsetBase(Mne::Lw, rt(instr), immi16(instr), rs(instr)),
 
@@ -262,6 +302,15 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 	}
 	else {
 		Ok(op)
+	}
+}
+
+fn cop_to_num(cop: &Cop) -> u8 {
+	match cop {
+		&Cop::C0 => 0,
+		&Cop::C1 => 1,
+		&Cop::C2 => 2,
+		&Cop::C3 => 3,
 	}
 }
 
@@ -300,6 +349,8 @@ fn reg_to_str(reg: &Reg) -> String {
 		&Reg::Gpr(30) => "s8",
 		&Reg::Gpr(31) => "ra",
 
+		&Reg::Cpr(cpr) => return format!("${}", cpr),
+
 		&Reg::Gpr(gpr) => return format!("<error:gpr{}", gpr),
 	}.to_string()
 }
@@ -307,6 +358,7 @@ fn reg_to_str(reg: &Reg) -> String {
 fn mne_to_str(mne: &Mne) -> String {
 	match mne {
 		&Mne::Add   => "add",
+		&Mne::Addi  => "addi",
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
 		&Mne::Beq   => "beq",
@@ -314,10 +366,13 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::J     => "j",
 		&Mne::Jalr  => "jalr",
 		&Mne::Jr    => "jr",
+		&Mne::Lui   => "lui",
 		&Mne::Lw    => "lw",
 		&Mne::Sll   => "sll",
 		&Mne::Slti  => "slti",
 		&Mne::Sw    => "sw",
+
+		&Mne::Mtc(ref cop) => return format!("mtc{}", cop_to_num(cop)),
 
 		&Mne::Li    => "li",
 		&Mne::Move  => "move",
@@ -370,12 +425,20 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 			(mne.clone(), Some(format!("{},{}({})", reg_to_str(rt), offset, reg_to_str(base))))
 		},
 
+		&Op::RtRd(ref mne, ref rt, ref rd) => {
+			(mne.clone(), Some(format!("{},{}", reg_to_str(rt), reg_to_str(rd))))
+		},
+
 		&Op::RtRsI16(ref mne, ref rt, ref rs, imm) => {
 			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rt), reg_to_str(rs), imm)))
 		},
 
 		&Op::RtRs(ref mne, ref rt, ref rs) => {
 			(mne.clone(), Some(format!("{},{}", reg_to_str(rt), reg_to_str(rs))))
+		},
+
+		&Op::RtU16(ref mne, ref rt, imm) => {
+			(mne.clone(), Some(format!("{},{:#x}", reg_to_str(rt), imm)))
 		},
 
 		&Op::Target(ref mne, ref target) => {
@@ -437,10 +500,13 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 25] = [
+	static BASE_TEST_CASES: [TestCase; 32] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",      op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",    op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
+
+		TestCase::Normal{ instr: 0x20101F81, asm: "addi    s0,zero,8065",  op: Op::RtRsI16(Mne::Addi, Reg::Gpr(S0), Reg::Gpr(ZERO), 8065) },
+		TestCase::Normal{ instr: 0x2231FFFF, asm: "addi    s1,s1,-1",      op: Op::RtRsI16(Mne::Addi, Reg::Gpr(S1), Reg::Gpr(S1), -1) },
 
 		TestCase::Normal{ instr: 0x27BDFFE8, asm: "addiu   sp,sp,-24",     op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(SP), Reg::Gpr(SP), -24) },
 		TestCase::Normal{ instr: 0x24020020, asm: "addiu   v0,zero,32",    op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(V0), Reg::Gpr(ZERO), 32) },
@@ -452,10 +518,17 @@ mod tests {
 		TestCase::Normal{ instr: 0x00400008, asm: "jr      v0",            op: Op::Rs(Mne::Jr, Reg::Gpr(V0)) },
 		TestCase::Normal{ instr: 0x03E00008, asm: "jr      ra",            op: Op::Rs(Mne::Jr, Reg::Gpr(RA)) },
 
+		TestCase::Normal{ instr: 0x3C0AA470, asm: "lui     t2,0xa470",     op: Op::RtU16(Mne::Lui, Reg::Gpr(T2), 0xA470) },
+		TestCase::Normal{ instr: 0x3C1F0010, asm: "lui     ra,0x10",       op: Op::RtU16(Mne::Lui, Reg::Gpr(RA), 0x10) },
+
 		TestCase::Normal{ instr: 0x8C43BB90, asm: "lw      v1,-17520(v0)", op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1), -17520, Reg::Gpr(V0)) },
 		TestCase::Normal{ instr: 0x8C430000, asm: "lw      v1,0(v0)",      op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1),      0, Reg::Gpr(V0)) },
 		TestCase::Normal{ instr: 0x8FC20018, asm: "lw      v0,24(s8)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V0),     24, Reg::Gpr(S8)) },
 		TestCase::Normal{ instr: 0x8FBF0014, asm: "lw      ra,20(sp)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(RA),     20, Reg::Gpr(SP)) },
+
+		TestCase::Normal{ instr: 0x40806800, asm: "mtc0    zero,$13",      op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(13)) },
+		TestCase::Normal{ instr: 0x40804800, asm: "mtc0    zero,$9",       op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(9)) },
+		TestCase::Normal{ instr: 0x40805800, asm: "mtc0    zero,$11",      op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(11)) },
 
 		TestCase::Normal{ instr: 0x00021400, asm: "sll     v0,v0,0x10",    op: Op::RdRtSa(Mne::Sll, Reg::Gpr(V0), Reg::Gpr(V0), 0x10) },
 		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0x0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
