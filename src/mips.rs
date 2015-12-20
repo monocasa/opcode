@@ -174,6 +174,7 @@ pub enum Op {
 	RtRd(Mne, Reg, Reg),
 	RtRs(Mne, Reg, Reg),
 	RtRsI16(Mne, Reg, Reg, i16),
+	RtRsU16(Mne, Reg, Reg, u16),
 	RtU16(Mne, Reg, u16),
 	Target(Mne, AddrTarget),
 }
@@ -284,6 +285,9 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 		0b001001 => Op::RtRsI16(Mne::Addiu, rt(instr), rs(instr), immi16(instr)),
 		0b001010 => Op::RtRsI16(Mne::Slti,  rt(instr), rs(instr), immi16(instr)),
 
+		0b001100 => Op::RtRsU16(Mne::Andi, rt(instr), rs(instr), immu16(instr)),
+		0b001101 => Op::RtRsU16(Mne::Ori,  rt(instr), rs(instr), immu16(instr)),
+		0b001110 => Op::RtRsU16(Mne::Xori, rt(instr), rs(instr), immu16(instr)),
 		0b001111 => match rs(instr) {
 			Reg::Gpr(0) => Op::RtU16(Mne::Lui, rt(instr), immu16(instr)),
 			_           => return Err(DisError::Unknown{num_bytes: 4}),
@@ -361,6 +365,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Addi  => "addi",
 		&Mne::Addiu => "addiu",
 		&Mne::Addu  => "addu",
+		&Mne::Andi  => "andi",
 		&Mne::Beq   => "beq",
 		&Mne::Bne   => "bne",
 		&Mne::J     => "j",
@@ -368,9 +373,11 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Jr    => "jr",
 		&Mne::Lui   => "lui",
 		&Mne::Lw    => "lw",
+		&Mne::Ori   => "ori",
 		&Mne::Sll   => "sll",
 		&Mne::Slti  => "slti",
 		&Mne::Sw    => "sw",
+		&Mne::Xori  => "xori",
 
 		&Mne::Mtc(ref cop) => return format!("mtc{}", cop_to_num(cop)),
 
@@ -437,6 +444,10 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 			(mne.clone(), Some(format!("{},{}", reg_to_str(rt), reg_to_str(rs))))
 		},
 
+		&Op::RtRsU16(ref mne, ref rt, ref rs, imm) => {
+			(mne.clone(), Some(format!("{},{},{:#x}", reg_to_str(rt), reg_to_str(rs), imm)))
+		},
+
 		&Op::RtU16(ref mne, ref rt, imm) => {
 			(mne.clone(), Some(format!("{},{:#x}", reg_to_str(rt), imm)))
 		},
@@ -500,44 +511,52 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 32] = [
-		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",      op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
+	static BASE_TEST_CASES: [TestCase; 37] = [
+		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",       op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
-		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",    op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
+		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",     op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
 
-		TestCase::Normal{ instr: 0x20101F81, asm: "addi    s0,zero,8065",  op: Op::RtRsI16(Mne::Addi, Reg::Gpr(S0), Reg::Gpr(ZERO), 8065) },
-		TestCase::Normal{ instr: 0x2231FFFF, asm: "addi    s1,s1,-1",      op: Op::RtRsI16(Mne::Addi, Reg::Gpr(S1), Reg::Gpr(S1), -1) },
+		TestCase::Normal{ instr: 0x20101F81, asm: "addi    s0,zero,8065",   op: Op::RtRsI16(Mne::Addi, Reg::Gpr(S0), Reg::Gpr(ZERO), 8065) },
+		TestCase::Normal{ instr: 0x2231FFFF, asm: "addi    s1,s1,-1",       op: Op::RtRsI16(Mne::Addi, Reg::Gpr(S1), Reg::Gpr(S1), -1) },
 
-		TestCase::Normal{ instr: 0x27BDFFE8, asm: "addiu   sp,sp,-24",     op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(SP), Reg::Gpr(SP), -24) },
-		TestCase::Normal{ instr: 0x24020020, asm: "addiu   v0,zero,32",    op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(V0), Reg::Gpr(ZERO), 32) },
+		TestCase::Normal{ instr: 0x27BDFFE8, asm: "addiu   sp,sp,-24",      op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(SP), Reg::Gpr(SP), -24) },
+		TestCase::Normal{ instr: 0x24020020, asm: "addiu   v0,zero,32",     op: Op::RtRsI16(Mne::Addiu, Reg::Gpr(V0), Reg::Gpr(ZERO), 32) },
 
-		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",            op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
-		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",            op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
-		TestCase::Normal{ instr: 0x00C04809, asm: "jalr    t1,a2",         op: Op::RdRs(Mne::Jalr, Reg::Gpr(T1), Reg::Gpr(A2)) },
+		TestCase::Normal{ instr: 0x307A0001, asm: "andi    k0,v1,0x1",      op: Op::RtRsU16(Mne::Andi, Reg::Gpr(K0), Reg::Gpr(V1), 0x1) },
+		TestCase::Normal{ instr: 0x30018000, asm: "andi    at,zero,0x8000", op: Op::RtRsU16(Mne::Andi, Reg::Gpr(AT), Reg::Gpr(ZERO), 0x8000) },
 
-		TestCase::Normal{ instr: 0x00400008, asm: "jr      v0",            op: Op::Rs(Mne::Jr, Reg::Gpr(V0)) },
-		TestCase::Normal{ instr: 0x03E00008, asm: "jr      ra",            op: Op::Rs(Mne::Jr, Reg::Gpr(RA)) },
+		TestCase::Normal{ instr: 0x0060F809, asm: "jalr    v1",             op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(V1)) },
+		TestCase::Normal{ instr: 0x00C0F809, asm: "jalr    a2",             op: Op::RdRs(Mne::Jalr, Reg::Gpr(RA), Reg::Gpr(A2)) },
+		TestCase::Normal{ instr: 0x00C04809, asm: "jalr    t1,a2",          op: Op::RdRs(Mne::Jalr, Reg::Gpr(T1), Reg::Gpr(A2)) },
 
-		TestCase::Normal{ instr: 0x3C0AA470, asm: "lui     t2,0xa470",     op: Op::RtU16(Mne::Lui, Reg::Gpr(T2), 0xA470) },
-		TestCase::Normal{ instr: 0x3C1F0010, asm: "lui     ra,0x10",       op: Op::RtU16(Mne::Lui, Reg::Gpr(RA), 0x10) },
+		TestCase::Normal{ instr: 0x00400008, asm: "jr      v0",             op: Op::Rs(Mne::Jr, Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x03E00008, asm: "jr      ra",             op: Op::Rs(Mne::Jr, Reg::Gpr(RA)) },
 
-		TestCase::Normal{ instr: 0x8C43BB90, asm: "lw      v1,-17520(v0)", op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1), -17520, Reg::Gpr(V0)) },
-		TestCase::Normal{ instr: 0x8C430000, asm: "lw      v1,0(v0)",      op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1),      0, Reg::Gpr(V0)) },
-		TestCase::Normal{ instr: 0x8FC20018, asm: "lw      v0,24(s8)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V0),     24, Reg::Gpr(S8)) },
-		TestCase::Normal{ instr: 0x8FBF0014, asm: "lw      ra,20(sp)",     op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(RA),     20, Reg::Gpr(SP)) },
+		TestCase::Normal{ instr: 0x3C0AA470, asm: "lui     t2,0xa470",      op: Op::RtU16(Mne::Lui, Reg::Gpr(T2), 0xA470) },
+		TestCase::Normal{ instr: 0x3C1F0010, asm: "lui     ra,0x10",        op: Op::RtU16(Mne::Lui, Reg::Gpr(RA), 0x10) },
 
-		TestCase::Normal{ instr: 0x40806800, asm: "mtc0    zero,$13",      op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(13)) },
-		TestCase::Normal{ instr: 0x40804800, asm: "mtc0    zero,$9",       op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(9)) },
-		TestCase::Normal{ instr: 0x40805800, asm: "mtc0    zero,$11",      op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(11)) },
+		TestCase::Normal{ instr: 0x8C43BB90, asm: "lw      v1,-17520(v0)",  op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1), -17520, Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x8C430000, asm: "lw      v1,0(v0)",       op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V1),      0, Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x8FC20018, asm: "lw      v0,24(s8)",      op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V0),     24, Reg::Gpr(S8)) },
+		TestCase::Normal{ instr: 0x8FBF0014, asm: "lw      ra,20(sp)",      op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(RA),     20, Reg::Gpr(SP)) },
 
-		TestCase::Normal{ instr: 0x00021400, asm: "sll     v0,v0,0x10",    op: Op::RdRtSa(Mne::Sll, Reg::Gpr(V0), Reg::Gpr(V0), 0x10) },
-		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0x0", op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
+		TestCase::Normal{ instr: 0x40806800, asm: "mtc0    zero,$13",       op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(13)) },
+		TestCase::Normal{ instr: 0x40804800, asm: "mtc0    zero,$9",        op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(9)) },
+		TestCase::Normal{ instr: 0x40805800, asm: "mtc0    zero,$11",       op: Op::RtRd(Mne::Mtc(Cop::C0), Reg::Gpr(0), Reg::Cpr(11)) },
 
-		TestCase::Normal{ instr: 0x28620031, asm: "slti    v0,v1,49",      op: Op::RtRsI16(Mne::Slti, Reg::Gpr(V0), Reg::Gpr(V1), 49) },
+		TestCase::Normal{ instr: 0x3409010F, asm: "ori     t1,zero,0x10f",  op: Op::RtRsU16(Mne::Ori, Reg::Gpr(T1), Reg::Gpr(ZERO), 0x10f) },
+		TestCase::Normal{ instr: 0x35714000, asm: "ori     s1,t3,0x4000",   op: Op::RtRsU16(Mne::Ori, Reg::Gpr(S1), Reg::Gpr(T3), 0x4000) },
 
-		TestCase::Normal{ instr: 0xAFBF0014, asm: "sw      ra,20(sp)",     op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(RA), 20, Reg::Gpr(SP)) },
-		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",     op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
-		TestCase::Normal{ instr: 0xAFC00030, asm: "sw      zero,48(s8)",   op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr( 0), 48, Reg::Gpr(S8)) },
+		TestCase::Normal{ instr: 0x00021400, asm: "sll     v0,v0,0x10",     op: Op::RdRtSa(Mne::Sll, Reg::Gpr(V0), Reg::Gpr(V0), 0x10) },
+		TestCase::Normal{ instr: 0x00000000, asm: "sll     zero,zero,0x0",  op: Op::RdRtSa(Mne::Sll, Reg::Gpr(ZERO), Reg::Gpr(ZERO), 0) },
+
+		TestCase::Normal{ instr: 0x28620031, asm: "slti    v0,v1,49",       op: Op::RtRsI16(Mne::Slti, Reg::Gpr(V0), Reg::Gpr(V1), 49) },
+
+		TestCase::Normal{ instr: 0xAFBF0014, asm: "sw      ra,20(sp)",      op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(RA), 20, Reg::Gpr(SP)) },
+		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",      op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
+		TestCase::Normal{ instr: 0xAFC00030, asm: "sw      zero,48(s8)",    op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr( 0), 48, Reg::Gpr(S8)) },
+
+		TestCase::Normal{ instr: 0x3884003F, asm: "xori    a0,a0,0x3f",     op: Op::RtRsU16(Mne::Xori, Reg::Gpr(A0), Reg::Gpr(A0), 0x3F) },
 
 		TestCase::Branch{ addr: 0x80000368, instr: 0x10620033, asm: "beq     v1,v0,0x80000438", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(204)) },
 		TestCase::Branch{ addr: 0x80001424, instr: 0x1062FFF7, asm: "beq     v1,v0,0x80001404", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(-36)) },
