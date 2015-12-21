@@ -169,6 +169,7 @@ pub enum Op {
 	RdRtSa(Mne, Reg, Reg, u8),
 	Rs(Mne, Reg),
 	RsRtTarget(Mne, Reg, Reg, AddrTarget),
+	RsTarget(Mne, Reg, AddrTarget),
 	RtI16(Mne, Reg, i16),
 	RtOffsetBase(Mne, Reg, i16, Reg),
 	RtRd(Mne, Reg, Reg),
@@ -251,20 +252,21 @@ fn decode_special(instr: u32, uarch_info: &UarchInfo, decode_options: &DecodeOpt
 
 fn mne_for_op(op: &Op) -> Mne {
 	let mne_ref = match op {
-		&Op::Implied(ref mne)         => mne,
-		&Op::RdRs(ref mne, _, _)         => mne,
+		&Op::Implied(ref mne)               => mne,
+		&Op::RdRs(ref mne, _, _)            => mne,
 		&Op::RdRsRt(ref mne, _, _, _)       => mne,
 		&Op::RdRtSa(ref mne, _, _, _)       => mne,
-		&Op::Rs(ref mne, _)           => mne,
+		&Op::Rs(ref mne, _)                 => mne,
 		&Op::RsRtTarget(ref mne, _, _, _)   => mne,
-		&Op::RtI16(ref mne, _, _)        => mne,
+		&Op::RsTarget(ref mne, _, _)        => mne,
+		&Op::RtI16(ref mne, _, _)           => mne,
 		&Op::RtOffsetBase(ref mne, _, _, _) => mne,
-		&Op::RtRd(ref mne, _, _)         => mne,
+		&Op::RtRd(ref mne, _, _)            => mne,
 		&Op::RtRsI16(ref mne, _, _, _)      => mne,
-		&Op::RtRs(ref mne, _, _)         => mne,
+		&Op::RtRs(ref mne, _, _)            => mne,
 		&Op::RtRsU16(ref mne, _, _, _)      => mne,
-		&Op::RtU16(ref mne, _, _)        => mne,
-		&Op::Target(ref mne, _)       => mne,
+		&Op::RtU16(ref mne, _, _)           => mne,
+		&Op::Target(ref mne, _)             => mne,
 	};
 
 	mne_ref.clone()
@@ -274,6 +276,7 @@ fn has_delay_slot(mne: &Mne) -> bool {
 	match mne {
 		&Mne::Beq  => true,
 		&Mne::Bne  => true,
+		&Mne::Blez => true,
 		&Mne::Lw   => true,
 		&Mne::J    => true,
 		&Mne::Jal  => true,
@@ -316,6 +319,10 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 
 		0b000100 => Op::RsRtTarget(Mne::Beq, rs(instr), rt(instr), cond_branch_offset(instr)),
 		0b000101 => Op::RsRtTarget(Mne::Bne, rs(instr), rt(instr), cond_branch_offset(instr)),
+		0b000110 => match rt(instr) {
+			Reg::Gpr(0) => Op::RsTarget(Mne::Blez, rs(instr), cond_branch_offset(instr)),
+			_           => return Err(DisError::Unknown{num_bytes: 4}),
+		},
 
 		0b001000 => Op::RtRsI16(Mne::Addi,  rt(instr), rs(instr), immi16(instr)),
 		0b001001 => Op::RtRsI16(Mne::Addiu, rt(instr), rs(instr), immi16(instr)),
@@ -403,6 +410,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Addu  => "addu",
 		&Mne::Andi  => "andi",
 		&Mne::Beq   => "beq",
+		&Mne::Blez  => "blez",
 		&Mne::Bne   => "bne",
 		&Mne::J     => "j",
 		&Mne::Jal   => "jal",
@@ -459,6 +467,10 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 
 		&Op::RsRtTarget(ref mne, ref rs, ref rt, ref target) => {
 			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rs), reg_to_str(rt), target_to_str(addr, target))))
+		},
+
+		&Op::RsTarget(ref mne, ref rs, ref target) => {
+			(mne.clone(), Some(format!("{},{}", reg_to_str(rs), target_to_str(addr, target))))
 		},
 
 		&Op::RtI16(ref mne, ref rt, imm) => {
@@ -550,7 +562,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 39] = [
+	static BASE_TEST_CASES: [TestCase; 40] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",       delay: false, op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",     delay: false, op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -600,6 +612,8 @@ mod tests {
 		TestCase::Branch{ addr: 0x80000368, instr: 0x10620033, asm: "beq     v1,v0,0x80000438", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(204)) },
 		TestCase::Branch{ addr: 0x80001424, instr: 0x1062FFF7, asm: "beq     v1,v0,0x80001404", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(-36)) },
 		TestCase::Branch{ addr: 0x80001BFC, instr: 0x1082FFE8, asm: "beq     a0,v0,0x80001ba0", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(A0), Reg::Gpr(V0), AddrTarget::Relative(-96)) },
+
+		TestCase::Branch{ addr: 0x80000448, instr: 0x1840000D, asm: "blez    v0,0x80000480",    op: Op::RsTarget(Mne::Blez, Reg::Gpr(V0), AddrTarget::Relative(52)) },
 
 		TestCase::Branch{ addr: 0x8001CB34, instr: 0x1443000C, asm: "bne     v0,v1,0x8001cb68", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(V0), Reg::Gpr(V1), AddrTarget::Relative( 48)) },
 		TestCase::Branch{ addr: 0x80029890, instr: 0x1501FFF2, asm: "bne     t0,at,0x8002985c", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(T0), Reg::Gpr(AT), AddrTarget::Relative(-56)) },
