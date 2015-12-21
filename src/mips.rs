@@ -311,7 +311,8 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 	let op = match opcode(instr) {
 		0b000000 => try!(decode_special(instr, uarch_info, decode_options)),
 
-		0b000010 => Op::Target(Mne::J, jump_target(instr, addr)),
+		0b000010 => Op::Target(Mne::J,   jump_target(instr, addr)),
+		0b000011 => Op::Target(Mne::Jal, jump_target(instr, addr)),
 
 		0b000100 => Op::RsRtTarget(Mne::Beq, rs(instr), rt(instr), cond_branch_offset(instr)),
 		0b000101 => Op::RsRtTarget(Mne::Bne, rs(instr), rt(instr), cond_branch_offset(instr)),
@@ -404,6 +405,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		&Mne::Beq   => "beq",
 		&Mne::Bne   => "bne",
 		&Mne::J     => "j",
+		&Mne::Jal   => "jal",
 		&Mne::Jalr  => "jalr",
 		&Mne::Jr    => "jr",
 		&Mne::Lui   => "lui",
@@ -548,7 +550,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 37] = [
+	static BASE_TEST_CASES: [TestCase; 39] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",       delay: false, op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",     delay: false, op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -603,6 +605,9 @@ mod tests {
 		TestCase::Branch{ addr: 0x80029890, instr: 0x1501FFF2, asm: "bne     t0,at,0x8002985c", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(T0), Reg::Gpr(AT), AddrTarget::Relative(-56)) },
 
 		TestCase::Branch{ addr: 0x80000914, instr: 0x0800024a, asm: "j       0x80000928",       op: Op::Target(Mne::J, AddrTarget::Absolute(0x80000928)) },
+
+		TestCase::Branch{ addr: 0x80029DE8, instr: 0x0C000730, asm: "jal     0x80001cc0",       op: Op::Target(Mne::Jal, AddrTarget::Absolute(0x80001CC0)) },
+		TestCase::Branch{ addr: 0x80029EA4, instr: 0x0C004040, asm: "jal     0x80010100",       op: Op::Target(Mne::Jal, AddrTarget::Absolute(0x80010100)) },
 	];
 
 	#[test]
