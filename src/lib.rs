@@ -27,7 +27,7 @@ pub enum AddrTarget {
 	Symbol(String),
 }
 
-pub type DisResult = Result<(String, usize), DisError>;
+pub type DisResult = Result<(String, usize, bool), DisError>;
 
 pub trait Disassembler {
 	fn disassemble(&self, Addr, &[u8]) -> DisResult;

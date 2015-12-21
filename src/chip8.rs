@@ -239,7 +239,7 @@ impl Disassembler for Chip8Disasm {
 
 		let op = try!(decode(instr));
 
-		Ok((op_to_str(op), 2))
+		Ok((op_to_str(op), 2, false))
 	}
 
 	fn bytes_per_unit(&self) -> u16 {
@@ -383,7 +383,7 @@ mod tests {
 			buffer[1] = test_case.instr as u8;
 
 			assert_eq!(disasm.disassemble(0, &buffer), 
-			           Ok((test_case.asm.to_string(), 2)));
+			           Ok((test_case.asm.to_string(), 2, false)));
 		}
 	}
 

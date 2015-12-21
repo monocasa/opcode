@@ -274,7 +274,7 @@ impl Disassembler for PpcDisasm {
 
 		let op = try!(decode(instr, addr, Uarch::Ppc206B));
 
-		Ok((op_to_str(&op), 4))
+		Ok((op_to_str(&op), 4, false))
 	}
 
 	fn bytes_per_unit(&self) -> u16 {
@@ -386,7 +386,7 @@ mod tests {
 					buffer[3] = (instr >> 0)  as u8;
 
 					assert_eq!(disasm.disassemble(0, &buffer),
-					           Ok((asm.to_string(), 4)));
+					           Ok((asm.to_string(), 4, false)));
 				},
 			}
 		}
