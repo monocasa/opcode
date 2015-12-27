@@ -148,10 +148,12 @@ pub enum Mne {
 	Xori,
 
 	//Base Pseudo-ops
+	B,
 	Beqz,
 	Bnez,
 	Li,
 	Move,
+	Negu,
 	Nop,
 
 	//COP0 Pseudo-ops
@@ -171,6 +173,7 @@ pub enum Op {
 	Rd(Mne, Reg),
 	RdRs(Mne, Reg, Reg),
 	RdRsRt(Mne, Reg, Reg, Reg),
+	RdRt(Mne, Reg, Reg),
 	RdRtRs(Mne, Reg, Reg, Reg),
 	RdRtSa(Mne, Reg, Reg, u8),
 	Rs(Mne, Reg),
@@ -320,6 +323,7 @@ fn mne_for_op(op: &Op) -> Mne {
 		&Op::Rd(ref mne, _)                 => mne,
 		&Op::RdRs(ref mne, _, _)            => mne,
 		&Op::RdRsRt(ref mne, _, _, _)       => mne,
+		&Op::RdRt(ref mne, _, _)            => mne,
 		&Op::RdRtRs(ref mne, _, _, _)       => mne,
 		&Op::RdRtSa(ref mne, _, _, _)       => mne,
 		&Op::Rs(ref mne, _)                 => mne,
@@ -359,6 +363,7 @@ fn has_delay_slot(mne: &Mne) -> bool {
 		&Mne::Lwl  => true,
 		&Mne::Lwr  => true,
 
+		&Mne::B    => true,
 		&Mne::Beqz => true,
 		&Mne::Bnez => true,
 
@@ -392,9 +397,12 @@ fn convert_to_pseudo_op(op: Op) -> Op {
 	match op {
 		Op::RdRsRt(Mne::Addu, rd, rs, Reg::Gpr(0)) => Op::RtRs(Mne::Move, rd, rs),
 
+		Op::RdRsRt(Mne::Subu, rd, Reg::Gpr(0), rt) => Op::RdRt(Mne::Negu, rd, rt),
+
 		Op::RdRtSa(Mne::Sll, Reg::Gpr(0), Reg::Gpr(0), 0) => Op::Implied(Mne::Nop),
 
-		Op::RsRtTarget(Mne::Beq, rs, Reg::Gpr(0), target) => Op::RsTarget(Mne::Beqz, rs, target),
+		Op::RsRtTarget(Mne::Beq, Reg::Gpr(0), Reg::Gpr(0), target) => Op::Target(Mne::B, target),
+		Op::RsRtTarget(Mne::Beq, rs,          Reg::Gpr(0), target) => Op::RsTarget(Mne::Beqz, rs, target),
 
 		Op::RsRtTarget(Mne::Bne, rs, Reg::Gpr(0), target) => Op::RsTarget(Mne::Bnez, rs, target),
 
@@ -591,10 +599,12 @@ fn mne_to_str(mne: &Mne) -> String {
 		Mne::Mtc(ref cop) => return format!("mtc{}", cop_to_num(cop)),
 		Mne::Swc(ref cop) => return format!("swc{}", cop_to_num(cop)),
 
+		Mne::B       => "b",
 		Mne::Beqz  => "beqz",
 		Mne::Bnez  => "bnez",
 		Mne::Li    => "li",
 		Mne::Move  => "move",
+		Mne::Negu  => "negu",
 		Mne::Nop   => "nop",
 
 		Mne::Rfe   => "rfe",
@@ -644,6 +654,10 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 
 		&Op::RdRsRt(ref mne, ref rd, ref rs, ref rt) => {
 			(mne.clone(), Some(format!("{},{},{}", reg_to_str(rd), reg_to_str(rs), reg_to_str(rt))))
+		},
+
+		&Op::RdRt(ref mne, ref rd, ref rt) => {
+			(mne.clone(), Some(format!("{},{}", reg_to_str(rd), reg_to_str(rt))))
 		},
 
 		&Op::RdRtRs(ref mne, ref rd, ref rt, ref rs) => {
@@ -767,7 +781,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 103] = [
+	static BASE_TEST_CASES: [TestCase; 104] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",        delay: false, op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",      delay: false, op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -886,7 +900,8 @@ mod tests {
 
 		TestCase::Normal{ instr: 0x00C53022, asm: "sub     a2,a2,a1",        delay: false, op: Op::RdRsRt(Mne::Sub, Reg::Gpr(A2), Reg::Gpr(A2), Reg::Gpr(A1)) },
 
-		TestCase::Normal{ instr: 0x00A71823, asm: "subu    v1,a1,a3",        delay: false, op: Op::RdRsRt(Mne::Subu, Reg::Gpr(V1), Reg::Gpr(A1), Reg::Gpr(A3)) },
+		TestCase::Normal{ instr: 0x00021823, asm: "subu    v1,zero,v0",      delay: false, op: Op::RdRsRt(Mne::Subu, Reg::Gpr(V1), Reg::Gpr(ZERO), Reg::Gpr(V0)) },
+		TestCase::Normal{ instr: 0x00A71823, asm: "subu    v1,a1,a3",        delay: false, op: Op::RdRsRt(Mne::Subu, Reg::Gpr(V1), Reg::Gpr(A1),   Reg::Gpr(A3)) },
 
 		TestCase::Normal{ instr: 0xAFBF0014, asm: "sw      ra,20(sp)",       delay: false, op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(RA), 20, Reg::Gpr(SP)) },
 		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",       delay: false, op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
@@ -990,14 +1005,18 @@ mod tests {
 		}
 	}
 
-	static PSEUDO_OP_TEST_CASES: [TestCase; 6] = [
-		TestCase::Normal{ instr: 0x24020020, asm: "li      v0,32", delay: false, op: Op::RtI16(Mne::Li, Reg::Gpr(V0), 32) },
+	static PSEUDO_OP_TEST_CASES: [TestCase; 8] = [
+		TestCase::Normal{ instr: 0x24020020, asm: "li      v0,32",     delay: false, op: Op::RtI16(Mne::Li, Reg::Gpr(V0), 32) },
 
 		TestCase::Normal{ instr: 0x3408FF00, asm: "li      t0,0xff00", delay: false, op: Op::RtU16(Mne::Li, Reg::Gpr(T0), 0xFF00) },
 
-		TestCase::Normal{ instr: 0x00000000, asm: "nop",           delay: false, op: Op::Implied(Mne::Nop) },
+		TestCase::Normal{ instr: 0x03A0F021, asm: "move    s8,sp",     delay: false, op: Op::RtRs(Mne::Move, Reg::Gpr(S8), Reg::Gpr(SP)) },
 
-		TestCase::Normal{ instr: 0x03A0F021, asm: "move    s8,sp", delay: false, op: Op::RtRs(Mne::Move, Reg::Gpr(S8), Reg::Gpr(SP)) },
+		TestCase::Normal{ instr: 0x00000000, asm: "nop",               delay: false, op: Op::Implied(Mne::Nop) },
+
+		TestCase::Normal{ instr: 0x00021823, asm: "negu    v1,v0",     delay: false, op: Op::RdRt(Mne::Negu, Reg::Gpr(V1), Reg::Gpr(V0)) },
+
+		TestCase::Branch{ addr: 0x800295EC, instr: 0x10000002, asm: "b       0x800295f8",    op: Op::Target(Mne::B, AddrTarget::Relative(8)) },
 
 		TestCase::Branch{ addr: 0x80029d00, instr: 0x10400009, asm: "beqz    v0,0x80029d28", op: Op::RsTarget(Mne::Beqz, Reg::Gpr(V0), AddrTarget::Relative(36)) },
 
