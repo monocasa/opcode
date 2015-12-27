@@ -148,6 +148,8 @@ pub enum Mne {
 	Xori,
 
 	//Base Pseudo-ops
+	Beqz,
+	Bnez,
 	Li,
 	Move,
 	Nop,
@@ -357,6 +359,9 @@ fn has_delay_slot(mne: &Mne) -> bool {
 		&Mne::Lwl  => true,
 		&Mne::Lwr  => true,
 
+		&Mne::Beqz => true,
+		&Mne::Bnez => true,
+
 		_ => false,
 	}
 }
@@ -385,9 +390,13 @@ fn decode_cop(cop: Cop, instr: u32) -> Result<Op, DisError> {
 
 fn convert_to_pseudo_op(op: Op) -> Op {
 	match op {
+		Op::RdRsRt(Mne::Addu, rd, rs, Reg::Gpr(0)) => Op::RtRs(Mne::Move, rd, rs),
+
 		Op::RdRtSa(Mne::Sll, Reg::Gpr(0), Reg::Gpr(0), 0) => Op::Implied(Mne::Nop),
 
-		Op::RdRsRt(Mne::Addu, rd, rs, Reg::Gpr(0)) => Op::RtRs(Mne::Move, rd, rs),
+		Op::RsRtTarget(Mne::Beq, rs, Reg::Gpr(0), target) => Op::RsTarget(Mne::Beqz, rs, target),
+
+		Op::RsRtTarget(Mne::Bne, rs, Reg::Gpr(0), target) => Op::RsTarget(Mne::Bnez, rs, target),
 
 		Op::RtRsI16(Mne::Addiu, rt, Reg::Gpr(0), imm) => Op::RtI16(Mne::Li, rt, imm),
 
@@ -582,6 +591,8 @@ fn mne_to_str(mne: &Mne) -> String {
 		Mne::Mtc(ref cop) => return format!("mtc{}", cop_to_num(cop)),
 		Mne::Swc(ref cop) => return format!("swc{}", cop_to_num(cop)),
 
+		Mne::Beqz  => "beqz",
+		Mne::Bnez  => "bnez",
 		Mne::Li    => "li",
 		Mne::Move  => "move",
 		Mne::Nop   => "nop",
@@ -756,7 +767,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 101] = [
+	static BASE_TEST_CASES: [TestCase; 103] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",        delay: false, op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",      delay: false, op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -904,6 +915,7 @@ mod tests {
 
 		TestCase::Normal{ instr: 0x3884003F, asm: "xori    a0,a0,0x3f",      delay: false, op: Op::RtRsU16(Mne::Xori, Reg::Gpr(A0), Reg::Gpr(A0), 0x3F) },
 
+		TestCase::Branch{ addr: 0x80029d00, instr: 0x10400009, asm: "beq     v0,zero,0x80029d28", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V0), Reg::Gpr(ZERO), AddrTarget::Relative(36)) },
 		TestCase::Branch{ addr: 0x80000368, instr: 0x10620033, asm: "beq     v1,v0,0x80000438", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(204)) },
 		TestCase::Branch{ addr: 0x80001424, instr: 0x1062FFF7, asm: "beq     v1,v0,0x80001404", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(V1), Reg::Gpr(V0), AddrTarget::Relative(-36)) },
 		TestCase::Branch{ addr: 0x80001BFC, instr: 0x1082FFE8, asm: "beq     a0,v0,0x80001ba0", op: Op::RsRtTarget(Mne::Beq, Reg::Gpr(A0), Reg::Gpr(V0), AddrTarget::Relative(-96)) },
@@ -916,6 +928,7 @@ mod tests {
 
 		TestCase::Branch{ addr: 0x8000B698, instr: 0x04400003, asm: "bltz    v0,0x8000b6a8",    op: Op::RsTarget(Mne::Bltz, Reg::Gpr(V0), AddrTarget::Relative(12)) },
 
+		TestCase::Branch{ addr: 0x80029A14, instr: 0x1440000A, asm: "bne     v0,zero,0x80029a40", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(V0), Reg::Gpr(ZERO), AddrTarget::Relative(40)) },
 		TestCase::Branch{ addr: 0x8001CB34, instr: 0x1443000C, asm: "bne     v0,v1,0x8001cb68", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(V0), Reg::Gpr(V1), AddrTarget::Relative( 48)) },
 		TestCase::Branch{ addr: 0x80029890, instr: 0x1501FFF2, asm: "bne     t0,at,0x8002985c", op: Op::RsRtTarget(Mne::Bne, Reg::Gpr(T0), Reg::Gpr(AT), AddrTarget::Relative(-56)) },
 
@@ -977,7 +990,7 @@ mod tests {
 		}
 	}
 
-	static PSEUDO_OP_TEST_CASES: [TestCase; 4] = [
+	static PSEUDO_OP_TEST_CASES: [TestCase; 6] = [
 		TestCase::Normal{ instr: 0x24020020, asm: "li      v0,32", delay: false, op: Op::RtI16(Mne::Li, Reg::Gpr(V0), 32) },
 
 		TestCase::Normal{ instr: 0x3408FF00, asm: "li      t0,0xff00", delay: false, op: Op::RtU16(Mne::Li, Reg::Gpr(T0), 0xFF00) },
@@ -985,6 +998,10 @@ mod tests {
 		TestCase::Normal{ instr: 0x00000000, asm: "nop",           delay: false, op: Op::Implied(Mne::Nop) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "move    s8,sp", delay: false, op: Op::RtRs(Mne::Move, Reg::Gpr(S8), Reg::Gpr(SP)) },
+
+		TestCase::Branch{ addr: 0x80029d00, instr: 0x10400009, asm: "beqz    v0,0x80029d28", op: Op::RsTarget(Mne::Beqz, Reg::Gpr(V0), AddrTarget::Relative(36)) },
+
+		TestCase::Branch{ addr: 0x80029A14, instr: 0x1440000A, asm: "bnez    v0,0x80029a40", op: Op::RsTarget(Mne::Bnez, Reg::Gpr(V0), AddrTarget::Relative(40)) },
 	];
 
 	#[test]
@@ -999,7 +1016,9 @@ mod tests {
 					assert_eq!(&decode(instr, 0, uarch_info, &pseudo_ops).unwrap(), op)
 				},
 
-				_ => {},
+				&TestCase::Branch{addr, instr, ref op, ..} => {
+					assert_eq!(&decode(instr, addr, uarch_info, &pseudo_ops).unwrap(), op)
+				},
 			}
 		}
 	}
@@ -1024,7 +1043,15 @@ mod tests {
 					           Ok((asm.to_string(), 4, delay)));
 				},
 
-				_ => {},
+				&TestCase::Branch{addr, instr, ref asm, ..} => {
+					buffer[0] = (instr >> 24) as u8;
+					buffer[1] = (instr >> 16) as u8;
+					buffer[2] = (instr >> 8)  as u8;
+					buffer[3] = (instr >> 0)  as u8;
+
+					assert_eq!(disasm(addr, &buffer, uarch_info, &pseudo_ops),
+					           Ok((asm.to_string(), 4, true)));
+				},
 			}
 		}
 	}
