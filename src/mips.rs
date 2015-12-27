@@ -391,6 +391,8 @@ fn convert_to_pseudo_op(op: Op) -> Op {
 
 		Op::RtRsI16(Mne::Addiu, rt, Reg::Gpr(0), imm) => Op::RtI16(Mne::Li, rt, imm),
 
+		Op::RtRsU16(Mne::Ori, rt, Reg::Gpr(0), imm) => Op::RtU16(Mne::Li, rt, imm),
+
 		_ => op,
 	}
 }
@@ -754,7 +756,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 100] = [
+	static BASE_TEST_CASES: [TestCase; 101] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",        delay: false, op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",      delay: false, op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -838,7 +840,8 @@ mod tests {
 
 		TestCase::Normal{ instr: 0x00c22025, asm: "or      a0,a2,v0",        delay: false, op: Op::RdRsRt(Mne::Or, Reg::Gpr(A0), Reg::Gpr(A2), Reg::Gpr(V0)) },
 
-		TestCase::Normal{ instr: 0x3409010F, asm: "ori     t1,zero,0x10f",   delay: false, op: Op::RtRsU16(Mne::Ori, Reg::Gpr(T1), Reg::Gpr(ZERO), 0x10f) },
+		TestCase::Normal{ instr: 0x3408ff00, asm: "ori     t0,zero,0xff00",  delay: false, op: Op::RtRsU16(Mne::Ori, Reg::Gpr(T0), Reg::Gpr(ZERO), 0xFF00) },
+		TestCase::Normal{ instr: 0x3409010F, asm: "ori     t1,zero,0x10f",   delay: false, op: Op::RtRsU16(Mne::Ori, Reg::Gpr(T1), Reg::Gpr(ZERO), 0x10F) },
 		TestCase::Normal{ instr: 0x35714000, asm: "ori     s1,t3,0x4000",    delay: false, op: Op::RtRsU16(Mne::Ori, Reg::Gpr(S1), Reg::Gpr(T3), 0x4000) },
 
 		TestCase::Normal{ instr: 0x42000010, asm: "rfe",                     delay: false, op: Op::Implied(Mne::Rfe) },
@@ -974,8 +977,10 @@ mod tests {
 		}
 	}
 
-	static PSEUDO_OP_TEST_CASES: [TestCase; 3] = [
+	static PSEUDO_OP_TEST_CASES: [TestCase; 4] = [
 		TestCase::Normal{ instr: 0x24020020, asm: "li      v0,32", delay: false, op: Op::RtI16(Mne::Li, Reg::Gpr(V0), 32) },
+
+		TestCase::Normal{ instr: 0x3408FF00, asm: "li      t0,0xff00", delay: false, op: Op::RtU16(Mne::Li, Reg::Gpr(T0), 0xFF00) },
 
 		TestCase::Normal{ instr: 0x00000000, asm: "nop",           delay: false, op: Op::Implied(Mne::Nop) },
 
