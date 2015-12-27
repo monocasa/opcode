@@ -164,6 +164,7 @@ pub enum Mne {
 #[derive(Debug, PartialEq)]
 pub enum Op {
 	Code(Mne, u32),
+	CopFunc(Mne, u32),
 	Implied(Mne),
 	Rd(Mne, Reg),
 	RdRs(Mne, Reg, Reg),
@@ -197,6 +198,10 @@ fn cop_function(instr: u32) -> u8 {
 	((instr >> 21) & 0x1F) as u8
 }
 
+fn cop_func(instr: u32) -> u32 {
+	instr & 0x01FFFFFF
+}
+
 fn special_function(instr: u32) -> u8 {
 	(instr & 0x3F) as u8
 }
@@ -207,6 +212,10 @@ fn regimm_function(instr: u32) -> u8 {
 
 fn rs(instr: u32) -> Reg {
 	Reg::Gpr(((instr >> 21) & 0x1F) as u8)
+}
+
+fn crt(instr: u32) -> Reg {
+	Reg::Cpr(((instr >> 16) & 0x1F) as u8)
 }
 
 fn rt(instr: u32) -> Reg {
@@ -304,6 +313,7 @@ fn decode_regimm(instr: u32) -> Result<Op, DisError> {
 fn mne_for_op(op: &Op) -> Mne {
 	let mne_ref = match op {
 		&Op::Code(ref mne, _)               => mne,
+		&Op::CopFunc(ref mne, _)            => mne,
 		&Op::Implied(ref mne)               => mne,
 		&Op::Rd(ref mne, _)                 => mne,
 		&Op::RdRs(ref mne, _, _)            => mne,
@@ -353,9 +363,21 @@ fn has_delay_slot(mne: &Mne) -> bool {
 
 fn decode_cop(cop: Cop, instr: u32) -> Result<Op, DisError> {
 	let op = match cop_function(instr) {
+		0b00000 => Op::RtRd(Mne::Mfc(cop), rt(instr), crd(instr)),
 		0b00100 => Op::RtRd(Mne::Mtc(cop), rt(instr), crd(instr)),
 
-		_ => return Err(DisError::Unknown{num_bytes: 4}),
+		_ => match cop_func(instr)  {
+			1  => Op::Implied(Mne::Tlbr),
+			2  => Op::Implied(Mne::Tlbwi),
+
+			6  => Op::Implied(Mne::Tlbwr),
+
+			8  => Op::Implied(Mne::Tlbp),
+
+			16 => Op::Implied(Mne::Rfe),
+
+			_ => Op::CopFunc(Mne::Cop(cop), cop_func(instr)),
+		},
 	};
 
 	Ok(op)
@@ -419,6 +441,10 @@ pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &D
 		0b101011 => Op::RtOffsetBase(Mne::Sw,  rt(instr), immi16(instr), rs(instr)),
 
 		0b101110 => Op::RtOffsetBase(Mne::Swr, rt(instr), immi16(instr), rs(instr)),
+
+		0b110000 => Op::RtOffsetBase(Mne::Lwc(Cop::C0), crt(instr), immi16(instr), rs(instr)),
+
+		0b111000 => Op::RtOffsetBase(Mne::Swc(Cop::C0), crt(instr), immi16(instr), rs(instr)),
 
 		_ => return Err(DisError::Unknown{num_bytes: 4}),
 	};
@@ -547,7 +573,7 @@ fn mne_to_str(mne: &Mne) -> String {
 		Mne::Bcf(ref cop) => return format!("bc{}f", cop_to_num(cop)),
 		Mne::Bct(ref cop) => return format!("bc{}t", cop_to_num(cop)),
 		Mne::Cfc(ref cop) => return format!("cfc{}", cop_to_num(cop)),
-		Mne::Cop(ref cop) => return format!("cop{}", cop_to_num(cop)),
+		Mne::Cop(ref cop) => return format!("c{}",   cop_to_num(cop)),
 		Mne::Ctc(ref cop) => return format!("ctc{}", cop_to_num(cop)),
 		Mne::Lwc(ref cop) => return format!("lwc{}", cop_to_num(cop)),
 		Mne::Mfc(ref cop) => return format!("mfc{}", cop_to_num(cop)),
@@ -579,6 +605,9 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 	let (mne, args_str) = match op {
 		&Op::Implied(ref mne) => (mne.clone(), None),
 
+		&Op::CopFunc(ref mne, cop_func) => {
+			(mne.clone(), Some(format!("{:#x}", cop_func)))
+		},
 
 		&Op::Code(ref mne, 0) => {
 			(mne.clone(), None)
@@ -725,7 +754,7 @@ mod tests {
 		Branch{ addr: Addr, instr: u32, asm: &'static str, op: Op },
 	}
 
-	static BASE_TEST_CASES: [TestCase; 90] = [
+	static BASE_TEST_CASES: [TestCase; 100] = [
 		TestCase::Normal{ instr: 0x02024020, asm: "add     t0,s0,v0",        delay: false, op: Op::RdRsRt(Mne::Add, Reg::Gpr(T0), Reg::Gpr(S0), Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x03A0F021, asm: "addu    s8,sp,zero",      delay: false, op: Op::RdRsRt(Mne::Addu, Reg::Gpr(S8), Reg::Gpr(SP), Reg::Gpr(ZERO)) },
@@ -742,8 +771,10 @@ mod tests {
 		TestCase::Normal{ instr: 0x30018000, asm: "andi    at,zero,0x8000",  delay: false, op: Op::RtRsU16(Mne::Andi, Reg::Gpr(AT), Reg::Gpr(ZERO), 0x8000) },
 
 		TestCase::Normal{ instr: 0x0007000D, asm: "break   0x7",             delay: false, op: Op::Code(Mne::Break, 7) },
-		TestCase::Normal{ instr: 0x03FF000D, asm: "break   0x3ff",         delay: false, op: Op::Code(Mne::Break, 0x3FF) },
+		TestCase::Normal{ instr: 0x03FF000D, asm: "break   0x3ff",           delay: false, op: Op::Code(Mne::Break, 0x3FF) },
 		TestCase::Normal{ instr: 0x0000FFCD, asm: "break   0xffc00",         delay: false, op: Op::Code(Mne::Break, 0xFFC00) },
+
+		TestCase::Normal{ instr: 0x42000020, asm: "c0      0x20",            delay: false, op: Op::CopFunc(Mne::Cop(Cop::C0), 0x20) }, 
 
 		TestCase::Normal{ instr: 0x0062001A, asm: "div     zero,v1,v0",      delay: false, op: Op::RsRt(Mne::Div, Reg::Gpr(V1), Reg::Gpr(V0)) },
 
@@ -776,11 +807,16 @@ mod tests {
 		TestCase::Normal{ instr: 0x8FC20018, asm: "lw      v0,24(s8)",       delay: true,  op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(V0),     24, Reg::Gpr(S8)) },
 		TestCase::Normal{ instr: 0x8FBF0014, asm: "lw      ra,20(sp)",       delay: true,  op: Op::RtOffsetBase(Mne::Lw, Reg::Gpr(RA),     20, Reg::Gpr(SP)) },
 
+		TestCase::Normal{ instr: 0xC0620000, asm: "lwc0    $2,0(v1)",        delay: false, op: Op::RtOffsetBase(Mne::Lwc(Cop::C0), Reg::Cpr(2), 0, Reg::Gpr(V1)) },
+
 		TestCase::Normal{ instr: 0x88430FE8, asm: "lwl     v1,4072(v0)",     delay: true,  op: Op::RtOffsetBase(Mne::Lwl, Reg::Gpr(V1),   4072, Reg::Gpr(V0)) },
 		TestCase::Normal{ instr: 0x88439000, asm: "lwl     v1,-28672(v0)",   delay: true,  op: Op::RtOffsetBase(Mne::Lwl, Reg::Gpr(V1), -28672, Reg::Gpr(V0)) },
 
 		TestCase::Normal{ instr: 0x98430FE3, asm: "lwr     v1,4067(v0)",     delay: true,  op: Op::RtOffsetBase(Mne::Lwr, Reg::Gpr(V1), 4067, Reg::Gpr(V0)) },
 		TestCase::Normal{ instr: 0x9A22000B, asm: "lwr     v0,11(s1)",       delay: true,  op: Op::RtOffsetBase(Mne::Lwr, Reg::Gpr(V0),   11, Reg::Gpr(S1)) },
+
+		TestCase::Normal{ instr: 0x40026000, asm: "mfc0    v0,$12",          delay: false, op: Op::RtRd(Mne::Mfc(Cop::C0), Reg::Gpr(V0), Reg::Cpr(12)) },
+		TestCase::Normal{ instr: 0x400A0000, asm: "mfc0    t2,$0",           delay: false, op: Op::RtRd(Mne::Mfc(Cop::C0), Reg::Gpr(T2), Reg::Cpr( 0)) },
 
 		TestCase::Normal{ instr: 0x00001010, asm: "mfhi    v0",              delay: false, op: Op::Rd(Mne::Mfhi, Reg::Gpr(V0)) },
 
@@ -804,6 +840,8 @@ mod tests {
 
 		TestCase::Normal{ instr: 0x3409010F, asm: "ori     t1,zero,0x10f",   delay: false, op: Op::RtRsU16(Mne::Ori, Reg::Gpr(T1), Reg::Gpr(ZERO), 0x10f) },
 		TestCase::Normal{ instr: 0x35714000, asm: "ori     s1,t3,0x4000",    delay: false, op: Op::RtRsU16(Mne::Ori, Reg::Gpr(S1), Reg::Gpr(T3), 0x4000) },
+
+		TestCase::Normal{ instr: 0x42000010, asm: "rfe",                     delay: false, op: Op::Implied(Mne::Rfe) },
 
 		TestCase::Normal{ instr: 0xA220A020, asm: "sb      zero,-24544(s1)", delay: false, op: Op::RtOffsetBase(Mne::Sb, Reg::Gpr(ZERO), -24544, Reg::Gpr(S1)) },
 		TestCase::Normal{ instr: 0xA0433882, asm: "sb      v1,14466(v0)",    delay: false, op: Op::RtOffsetBase(Mne::Sb, Reg::Gpr(V1),    14466, Reg::Gpr(V0)) },
@@ -840,6 +878,8 @@ mod tests {
 		TestCase::Normal{ instr: 0xAFBE0010, asm: "sw      s8,16(sp)",       delay: false, op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr(S8), 16, Reg::Gpr(SP)) },
 		TestCase::Normal{ instr: 0xAFC00030, asm: "sw      zero,48(s8)",     delay: false, op: Op::RtOffsetBase(Mne::Sw, Reg::Gpr( 0), 48, Reg::Gpr(S8)) },
 
+		TestCase::Normal{ instr: 0xE0640000, asm: "swc0    $4,0(v1)",        delay: false, op: Op::RtOffsetBase(Mne::Swc(Cop::C0), Reg::Cpr(4), 0, Reg::Gpr(V1)) },
+
 		TestCase::Normal{ instr: 0xA8A20FE4, asm: "swl     v0,4068(a1)",     delay: false, op: Op::RtOffsetBase(Mne::Swl, Reg::Gpr(V0), 4068, Reg::Gpr(A1)) },
 		TestCase::Normal{ instr: 0xA8400010, asm: "swl     zero,16(v0)",     delay: false, op: Op::RtOffsetBase(Mne::Swl, Reg::Gpr(ZERO), 16, Reg::Gpr(V0)) },
 
@@ -848,6 +888,14 @@ mod tests {
 
 		TestCase::Normal{ instr: 0x0000000C, asm: "syscall",                 delay: false, op: Op::Code(Mne::Syscall, 0) },
 		TestCase::Normal{ instr: 0x0007000C, asm: "syscall 0x7",             delay: false, op: Op::Code(Mne::Syscall, 7) },
+
+		TestCase::Normal{ instr: 0x42000008, asm: "tlbp",                    delay: false, op: Op::Implied(Mne::Tlbp) },
+
+		TestCase::Normal{ instr: 0x42000001, asm: "tlbr",                    delay: false, op: Op::Implied(Mne::Tlbr) },
+
+		TestCase::Normal{ instr: 0x42000002, asm: "tlbwi",                   delay: false, op: Op::Implied(Mne::Tlbwi) },
+
+		TestCase::Normal{ instr: 0x42000006, asm: "tlbwr",                   delay: false, op: Op::Implied(Mne::Tlbwr) },
 
 		TestCase::Normal{ instr: 0x00621026, asm: "xor     v0,v1,v0",        delay: false, op: Op::RdRsRt(Mne::Xor, Reg::Gpr(V0), Reg::Gpr(V1), Reg::Gpr(V0)) },
 
