@@ -761,7 +761,7 @@ pub fn disasm(addr: Addr, buf: &[u8], uarch_info: &UarchInfo, decode_options: &D
 }
 
 pub struct MipsDisasm {
-	big_endian: bool,
+	pub big_endian: bool,
 }
 
 impl Disassembler for MipsDisasm {
