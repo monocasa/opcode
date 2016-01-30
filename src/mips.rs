@@ -190,7 +190,6 @@ pub enum Op {
 	Target(Mne, AddrTarget),
 }
 
-#[allow(dead_code)]
 pub struct DecodeOptions {
 	decode_pseudo_ops: bool,
 }
