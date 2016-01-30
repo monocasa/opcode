@@ -752,7 +752,7 @@ pub fn disasm(addr: Addr, buf: &[u8], uarch_info: &UarchInfo, decode_options: &D
 		((buf[2] as u32) << 16) |
 		((buf[3] as u32) << 24)
 	};
-		
+
 	let op = try!(decode(instr, addr, uarch_info, decode_options));
 
 	let mne = mne_for_op(&op);
