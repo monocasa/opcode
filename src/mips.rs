@@ -192,6 +192,7 @@ pub enum Op {
 
 pub struct DecodeOptions {
 	decode_pseudo_ops: bool,
+	big_endian: bool,
 }
 
 fn opcode(instr: u32) -> u8 {
@@ -740,11 +741,18 @@ pub fn disasm(addr: Addr, buf: &[u8], uarch_info: &UarchInfo, decode_options: &D
 		return Err( DisError::Unaligned{ desired_alignment: 4, } );
 	}
 
-	let instr = ((buf[0] as u32) << 24) |
-	            ((buf[1] as u32) << 16) |
-	            ((buf[2] as u32) << 8 ) |
-	            ((buf[3] as u32) << 0 );
-
+	let instr = if decode_options.big_endian {
+		((buf[0] as u32) << 24) |
+		((buf[1] as u32) << 16) |
+		((buf[2] as u32) << 8 ) |
+		((buf[3] as u32) << 0 )
+	} else {
+		((buf[0] as u32) << 0 ) |
+		((buf[1] as u32) << 8 ) |
+		((buf[2] as u32) << 16) |
+		((buf[3] as u32) << 24)
+	};
+		
 	let op = try!(decode(instr, addr, uarch_info, decode_options));
 
 	let mne = mne_for_op(&op);
@@ -752,13 +760,18 @@ pub fn disasm(addr: Addr, buf: &[u8], uarch_info: &UarchInfo, decode_options: &D
 	Ok((op_to_str(addr, &op), 4, has_delay_slot(&mne)))
 }
 
-pub struct MipsDisasm;
+pub struct MipsDisasm {
+	big_endian: bool,
+}
 
 impl Disassembler for MipsDisasm {
 	fn disassemble(&self, addr: Addr, buf: &[u8]) -> DisResult  {
 		let uarch_info = uarch_info_for_uarch(Uarch::HarvardMips161);
 
-		let no_pseudo_ops = DecodeOptions { decode_pseudo_ops: true };
+		let no_pseudo_ops = DecodeOptions {
+			decode_pseudo_ops: true,
+			big_endian: self.big_endian,
+		};
 
 		disasm(addr, buf, uarch_info, &no_pseudo_ops)
 	}
@@ -954,18 +967,21 @@ mod tests {
 
 	#[test]
 	fn decode_base() {
-		let no_pseudo_ops = DecodeOptions { decode_pseudo_ops: false };
+		let decode_opts = DecodeOptions {
+			decode_pseudo_ops: false,
+			big_endian: true,
+		};
 
 		let uarch_info = uarch_info_for_uarch(Uarch::HarvardMips161);
 
 		for test_case in BASE_TEST_CASES.iter() {
 			match test_case {
 				&TestCase::Normal{instr, ref op, ..} => {
-					assert_eq!(&decode(instr, 0, uarch_info, &no_pseudo_ops).unwrap(), op)
+					assert_eq!(&decode(instr, 0, uarch_info, &decode_opts).unwrap(), op)
 				},
 
 				&TestCase::Branch{addr, instr, ref op, ..} => {
-					assert_eq!(&decode(instr, addr, uarch_info, &no_pseudo_ops).unwrap(), op)
+					assert_eq!(&decode(instr, addr, uarch_info, &decode_opts).unwrap(), op)
 				},
 			}
 		}
@@ -973,13 +989,17 @@ mod tests {
 
 	#[test]
 	fn disasm_base() {
-		let no_pseudo_ops = DecodeOptions { decode_pseudo_ops: false };
+		let mut decode_opts = DecodeOptions {
+			decode_pseudo_ops: false,
+			big_endian: false,
+		};
 
 		let uarch_info = uarch_info_for_uarch(Uarch::HarvardMips161);
 
 		let mut buffer: [u8;4] = [0; 4];
 
 		for test_case in BASE_TEST_CASES.iter() {
+			decode_opts.big_endian = true;
 			match test_case {
 				&TestCase::Normal{instr, ref asm, delay, ..} => {
 					buffer[0] = (instr >> 24) as u8;
@@ -987,7 +1007,7 @@ mod tests {
 					buffer[2] = (instr >> 8)  as u8;
 					buffer[3] = (instr >> 0)  as u8;
 
-					assert_eq!(disasm(0, &buffer, uarch_info, &no_pseudo_ops),
+					assert_eq!(disasm(0, &buffer, uarch_info, &decode_opts),
 					           Ok((asm.to_string(), 4, delay)));
 				},
 
@@ -997,7 +1017,30 @@ mod tests {
 					buffer[2] = (instr >> 8)  as u8;
 					buffer[3] = (instr >> 0)  as u8;
 
-					assert_eq!(disasm(addr, &buffer, uarch_info, &no_pseudo_ops),
+					assert_eq!(disasm(addr, &buffer, uarch_info, &decode_opts),
+					           Ok((asm.to_string(), 4, true)));
+				},
+			}
+
+			decode_opts.big_endian = false;
+			match test_case {
+				&TestCase::Normal{instr, ref asm, delay, ..} => {
+					buffer[0] = (instr >> 0)  as u8;
+					buffer[1] = (instr >> 8)  as u8;
+					buffer[2] = (instr >> 16) as u8;
+					buffer[3] = (instr >> 24) as u8;
+
+					assert_eq!(disasm(0, &buffer, uarch_info, &decode_opts),
+					           Ok((asm.to_string(), 4, delay)));
+				},
+
+				&TestCase::Branch{addr, instr, ref asm, ..} => {
+					buffer[0] = (instr >> 0)  as u8;
+					buffer[1] = (instr >> 8)  as u8;
+					buffer[2] = (instr >> 16) as u8;
+					buffer[3] = (instr >> 24) as u8;
+
+					assert_eq!(disasm(addr, &buffer, uarch_info, &decode_opts),
 					           Ok((asm.to_string(), 4, true)));
 				},
 			}
@@ -1024,7 +1067,10 @@ mod tests {
 
 	#[test]
 	fn decode_pseudo_ops() {
-		let pseudo_ops = DecodeOptions { decode_pseudo_ops: true };
+		let pseudo_ops = DecodeOptions {
+			decode_pseudo_ops: true,
+			big_endian: true,
+		};
 
 		let uarch_info = uarch_info_for_uarch(Uarch::HarvardMips161);
 
@@ -1043,7 +1089,10 @@ mod tests {
 
 	#[test]
 	fn disasm_pseudo_ops() {
-		let pseudo_ops = DecodeOptions { decode_pseudo_ops: true };
+		let pseudo_ops = DecodeOptions {
+			decode_pseudo_ops: true,
+			big_endian: true,
+		};
 
 		let uarch_info = uarch_info_for_uarch(Uarch::HarvardMips161);
 
