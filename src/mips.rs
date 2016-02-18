@@ -191,8 +191,8 @@ pub enum Op {
 }
 
 pub struct DecodeOptions {
-	decode_pseudo_ops: bool,
-	big_endian: bool,
+	pub decode_pseudo_ops: bool,
+	pub big_endian: bool,
 }
 
 fn opcode(instr: u32) -> u8 {
