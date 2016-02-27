@@ -414,8 +414,32 @@ fn convert_to_pseudo_op(op: Op) -> Op {
 	}
 }
 
+pub fn decode_buf(buf: &[u8], addr: Addr, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
+	if buf.len() < 4 {
+		return Err(DisError::MemOverflow);
+	}
+
+	if (addr % 4) != 0 {
+		return Err( DisError::Unaligned{ desired_alignment: 4, } );
+	}
+
+	let instr = if decode_options.big_endian {
+		((buf[0] as u32) << 24) |
+		((buf[1] as u32) << 16) |
+		((buf[2] as u32) << 8 ) |
+		((buf[3] as u32) << 0 )
+	} else {
+		((buf[0] as u32) << 0 ) |
+		((buf[1] as u32) << 8 ) |
+		((buf[2] as u32) << 16) |
+		((buf[3] as u32) << 24)
+	};
+
+	decode_instr(instr, addr, uarch_info, decode_options)
+}
+
 #[allow(unused_variables)]
-pub fn decode(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
+pub fn decode_instr(instr: u32, addr: Addr, uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> Result<Op, DisError> {
 	let op = match opcode(instr) {
 		0b000000 => try!(decode_special(instr, uarch_info, decode_options)),
 		0b000001 => try!(decode_regimm(instr)),
@@ -733,27 +757,7 @@ fn op_to_str(addr: Addr, op: &Op) -> String {
 
 #[allow(unused_variables)]
 pub fn disasm(addr: Addr, buf: &[u8], uarch_info: &UarchInfo, decode_options: &DecodeOptions) -> DisResult {
-	if buf.len() < 4 {
-		return Err(DisError::MemOverflow);
-	}
-
-	if (addr % 4) != 0 {
-		return Err( DisError::Unaligned{ desired_alignment: 4, } );
-	}
-
-	let instr = if decode_options.big_endian {
-		((buf[0] as u32) << 24) |
-		((buf[1] as u32) << 16) |
-		((buf[2] as u32) << 8 ) |
-		((buf[3] as u32) << 0 )
-	} else {
-		((buf[0] as u32) << 0 ) |
-		((buf[1] as u32) << 8 ) |
-		((buf[2] as u32) << 16) |
-		((buf[3] as u32) << 24)
-	};
-
-	let op = try!(decode(instr, addr, uarch_info, decode_options));
+	let op = try!(decode_buf(buf, addr, uarch_info, decode_options));
 
 	let mne = mne_for_op(&op);
 
@@ -977,11 +981,11 @@ mod tests {
 		for test_case in BASE_TEST_CASES.iter() {
 			match test_case {
 				&TestCase::Normal{instr, ref op, ..} => {
-					assert_eq!(&decode(instr, 0, uarch_info, &decode_opts).unwrap(), op)
+					assert_eq!(&decode_instr(instr, 0, uarch_info, &decode_opts).unwrap(), op)
 				},
 
 				&TestCase::Branch{addr, instr, ref op, ..} => {
-					assert_eq!(&decode(instr, addr, uarch_info, &decode_opts).unwrap(), op)
+					assert_eq!(&decode_instr(instr, addr, uarch_info, &decode_opts).unwrap(), op)
 				},
 			}
 		}
@@ -1077,11 +1081,11 @@ mod tests {
 		for test_case in PSEUDO_OP_TEST_CASES.iter() {
 			match test_case {
 				&TestCase::Normal{instr, ref op, ..} => {
-					assert_eq!(&decode(instr, 0, uarch_info, &pseudo_ops).unwrap(), op)
+					assert_eq!(&decode_instr(instr, 0, uarch_info, &pseudo_ops).unwrap(), op)
 				},
 
 				&TestCase::Branch{addr, instr, ref op, ..} => {
-					assert_eq!(&decode(instr, addr, uarch_info, &pseudo_ops).unwrap(), op)
+					assert_eq!(&decode_instr(instr, addr, uarch_info, &pseudo_ops).unwrap(), op)
 				},
 			}
 		}
